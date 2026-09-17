@@ -1,0 +1,97 @@
+{
+  "source_log": "C:\\Users\\20917\\.codex\\sessions\\2026\\09\\17\\rollout-2026-09-17T14-17-43-01a0ae03-8d55-7052-b084-6dd5373bb908.jsonl",
+  "files": [
+    {
+      "path": "md/claude定案md文档/技术选型清单.md",
+      "source_log_line": 41,
+      "source_type": "original file read stdout",
+      "sha256": "cb60759aaaa309207e9acf462437946752e0da93a6a08ea2ccebc5dc27c38e4d",
+      "bytes": 17091
+    },
+    {
+      "path": "md/claude定案md文档/系统架构设计.md",
+      "source_log_line": 42,
+      "source_type": "original file read stdout",
+      "sha256": "a75dd2e651806d5207182aec6dd152e67fd4fa62baaf43bddc05b78b7fbba3f7",
+      "bytes": 30617
+    },
+    {
+      "path": "md/claude定案md文档/数据库表结构设计.md",
+      "source_log_line": 43,
+      "source_type": "original file read stdout",
+      "sha256": "f6de1825029719ff19f6b9de9eb15ea5adc3819e7099af7070c04f14f4e9bb48",
+      "bytes": 14184
+    },
+    {
+      "path": "md/claude定案md文档/开发计划与实施路线图.md",
+      "source_log_line": 44,
+      "source_type": "original file read stdout",
+      "sha256": "b21a5cb5a609cc536c67bd7bba8610a5b1d7fcf89fd4f009d31b16bc89d9ea34",
+      "bytes": 15190
+    },
+    {
+      "path": "md/deepseek项目定案/系统架构设计 v2.0.md",
+      "source_log_line": 112,
+      "source_type": "original file read stdout",
+      "sha256": "191a712d5470e6dca7a12a9b0303531acf89ddda73165c85f2d476815d5b239b",
+      "bytes": 20436
+    },
+    {
+      "path": "md/deepseek项目定案/项目定案.md",
+      "source_log_line": 113,
+      "source_type": "original file read stdout",
+      "sha256": "e0f63f70671f46cb228528c394db820812d65235f4d18db69874a13621d2dd70",
+      "bytes": 11519
+    },
+    {
+      "path": "md/deepseek项目定案/数据库表结构设计 v2.0.md",
+      "source_log_line": 114,
+      "source_type": "original file read stdout",
+      "sha256": "b630c186b6318d7a035f0231b811b047fae55594e7677c83a1b7155e28c59fbf",
+      "bytes": 26376
+    },
+    {
+      "path": "md/deepseek项目定案/技术选型清单 v2.0.md",
+      "source_log_line": 124,
+      "source_type": "original file read stdout",
+      "sha256": "3b37bf67861c459724fed023fd3d387139ff17c2ed2497d9a3fc3fcf29f62eb9",
+      "bytes": 21182
+    },
+    {
+      "path": "md/deepseek项目定案/开发计划与实施路线图 v2.0.md",
+      "source_log_line": 125,
+      "source_type": "original file read stdout",
+      "sha256": "ed3374c29bd794169e190516ec69a58a98d625c295dc607ce5c43d83f197de5b",
+      "bytes": 14808
+    },
+    {
+      "path": "md/codex建议方案/README.md",
+      "source_log_line": 165,
+      "source_type": "original creation patch",
+      "sha256": "b8b41139fdcde9c1b5a1ec1d0a30f77670ed27edf33035d2cc2c95fecd2735d6",
+      "bytes": 2042
+    },
+    {
+      "path": "md/codex建议方案/01-两套方案对比评审.md",
+      "source_log_line": 165,
+      "source_type": "original creation patch",
+      "sha256": "404fa264694ae110119c787b1d5aeb66b34d59d6946dd74079238cf8b1d2400b",
+      "bytes": 11564
+    },
+    {
+      "path": "md/codex建议方案/02-Codex系统建议方案.md",
+      "source_log_line": 172,
+      "source_type": "original creation patch",
+      "sha256": "6edf6cdcdaa6a2cff1a0e697c58df55328d5671d1f65283a179022014d68ac8c",
+      "bytes": 14290
+    },
+    {
+      "path": "md/codex建议方案/03-实施路线与验收.md",
+      "source_log_line": 172,
+      "source_type": "original creation patch",
+      "sha256": "3bc463b0bc4e29e6900dff44920e37713ef4f35843dd0cc79407526e77ff3725",
+      "bytes": 8006
+    }
+  ],
+  "note": "Text verified against original session records. Original byte hashes unavailable; BOM/newline equivalence not asserted."
+}
