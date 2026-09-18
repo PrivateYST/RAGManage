@@ -1,0 +1,11 @@
+{
+  "eslint.workingDirectories": ["./frontend"],
+  "eslint.validate": ["javascript", "typescript", "vue", "json", "jsonc"],
+  "[javascript][typescript][vue][json][jsonc]": {
+    "editor.formatOnSave": false,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit",
+      "source.organizeImports": "never"
+    }
+  }
+}

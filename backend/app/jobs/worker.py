@@ -12,4 +12,5 @@ celery_app.conf.update(
     enable_utc=True,
     broker_connection_retry_on_startup=True,
 )
-# Business tasks and transactional outbox are implemented in P12.
+# 导入任务模块完成 Celery 注册；任务本身仍通过数据库租约保证可恢复。
+from app.jobs import tasks as _tasks  # noqa: E402,F401

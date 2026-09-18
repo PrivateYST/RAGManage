@@ -1,0 +1,87 @@
+name: ragmanage
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.2-pg16@sha256:00ba258a66dac104fd5171074a0084462a64a1369d8513f3d0a634e2f24d15bc
+    environment:
+      POSTGRES_USER: ragmanage
+      POSTGRES_DB: ragmanage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the production .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-vector.sql:/docker-entrypoint-initdb.d/001-vector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ragmanage -d ragmanage"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: ${IMAGE_REGISTRY:?Set IMAGE_REGISTRY}/${IMAGE_NAMESPACE:-ragmanage}/api:${IMAGE_TAG:?Set IMAGE_TAG}
+    environment: &app-environment
+      DATABASE_URL: postgresql://ragmanage:${POSTGRES_PASSWORD}@postgres:5432/ragmanage
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_ROOT: /data/files
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:?Set OLLAMA_BASE_URL}
+      GENERATION_MODEL: ${GENERATION_MODEL:?Set GENERATION_MODEL}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:?Set EMBEDDING_MODEL}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+    expose:
+      - "8000"
+    volumes:
+      - files:/data/files
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=8)"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  worker:
+    image: ${IMAGE_REGISTRY:?Set IMAGE_REGISTRY}/${IMAGE_NAMESPACE:-ragmanage}/api:${IMAGE_TAG:?Set IMAGE_TAG}
+    environment: *app-environment
+    command: ["celery", "-A", "app.jobs.worker:celery_app", "worker", "--loglevel=INFO", "--concurrency=1"]
+    volumes:
+      - files:/data/files
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  frontend:
+    image: ${IMAGE_REGISTRY:?Set IMAGE_REGISTRY}/${IMAGE_NAMESPACE:-ragmanage}/frontend:${IMAGE_TAG:?Set IMAGE_TAG}
+    expose:
+      - "80"
+    depends_on:
+      api: {condition: service_healthy}
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      # 8080 is already used by the existing Open WebUI service.
+      - "8081:80"
+      - "443:443"
+    volumes:
+      - ../../frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      frontend: {condition: service_started}
+      api: {condition: service_healthy}
+
+volumes:
+  postgres-data:
+  redis-data:
+  files:

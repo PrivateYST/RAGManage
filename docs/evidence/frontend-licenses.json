@@ -1,0 +1,500 @@
+{
+  "MIT": [
+    {
+      "name": "@babel/helper-string-parser",
+      "versions": [
+        "7.29.7"
+      ]
+    },
+    {
+      "name": "@babel/helper-validator-identifier",
+      "versions": [
+        "7.29.7"
+      ]
+    },
+    {
+      "name": "@babel/parser",
+      "versions": [
+        "7.29.8"
+      ]
+    },
+    {
+      "name": "@babel/types",
+      "versions": [
+        "7.29.8"
+      ]
+    },
+    {
+      "name": "@jridgewell/resolve-uri",
+      "versions": [
+        "3.1.2"
+      ]
+    },
+    {
+      "name": "@jridgewell/sourcemap-codec",
+      "versions": [
+        "1.6.0"
+      ]
+    },
+    {
+      "name": "@jridgewell/trace-mapping",
+      "versions": [
+        "0.3.31"
+      ]
+    },
+    {
+      "name": "@oxc-project/types",
+      "versions": [
+        "0.149.0"
+      ]
+    },
+    {
+      "name": "@rolldown/binding-win32-x64-msvc",
+      "versions": [
+        "1.2.8"
+      ]
+    },
+    {
+      "name": "@rolldown/pluginutils",
+      "versions": [
+        "1.0.1"
+      ]
+    },
+    {
+      "name": "@types/chai",
+      "versions": [
+        "5.2.3"
+      ]
+    },
+    {
+      "name": "@types/deep-eql",
+      "versions": [
+        "4.0.2"
+      ]
+    },
+    {
+      "name": "@types/estree",
+      "versions": [
+        "1.0.9"
+      ]
+    },
+    {
+      "name": "@types/node",
+      "versions": [
+        "22.20.3"
+      ]
+    },
+    {
+      "name": "@vitejs/plugin-vue",
+      "versions": [
+        "6.0.9"
+      ]
+    },
+    {
+      "name": "@vitest/mocker",
+      "versions": [
+        "5.0.1"
+      ]
+    },
+    {
+      "name": "@vitest/spy",
+      "versions": [
+        "5.0.1"
+      ]
+    },
+    {
+      "name": "@volar/language-core",
+      "versions": [
+        "2.4.28"
+      ]
+    },
+    {
+      "name": "@volar/source-map",
+      "versions": [
+        "2.4.28"
+      ]
+    },
+    {
+      "name": "@volar/typescript",
+      "versions": [
+        "2.4.28"
+      ]
+    },
+    {
+      "name": "@vue/compiler-core",
+      "versions": [
+        "3.5.42",
+        "3.5.43"
+      ]
+    },
+    {
+      "name": "@vue/compiler-dom",
+      "versions": [
+        "3.5.42",
+        "3.5.43"
+      ]
+    },
+    {
+      "name": "@vue/compiler-sfc",
+      "versions": [
+        "3.5.43"
+      ]
+    },
+    {
+      "name": "@vue/compiler-ssr",
+      "versions": [
+        "3.5.43"
+      ]
+    },
+    {
+      "name": "@vue/devtools-api",
+      "versions": [
+        "6.6.4",
+        "7.7.10"
+      ]
+    },
+    {
+      "name": "@vue/devtools-kit",
+      "versions": [
+        "7.7.10"
+      ]
+    },
+    {
+      "name": "@vue/devtools-shared",
+      "versions": [
+        "7.7.10"
+      ]
+    },
+    {
+      "name": "@vue/language-core",
+      "versions": [
+        "3.3.11"
+      ]
+    },
+    {
+      "name": "@vue/reactivity",
+      "versions": [
+        "3.5.43"
+      ]
+    },
+    {
+      "name": "@vue/runtime-core",
+      "versions": [
+        "3.5.43"
+      ]
+    },
+    {
+      "name": "@vue/runtime-dom",
+      "versions": [
+        "3.5.43"
+      ]
+    },
+    {
+      "name": "@vue/server-renderer",
+      "versions": [
+        "3.5.43"
+      ]
+    },
+    {
+      "name": "@vue/shared",
+      "versions": [
+        "3.5.42",
+        "3.5.43"
+      ]
+    },
+    {
+      "name": "alien-signals",
+      "versions": [
+        "3.2.1"
+      ]
+    },
+    {
+      "name": "assertion-error",
+      "versions": [
+        "2.0.1"
+      ]
+    },
+    {
+      "name": "birpc",
+      "versions": [
+        "2.9.0"
+      ]
+    },
+    {
+      "name": "chai",
+      "versions": [
+        "6.2.2"
+      ]
+    },
+    {
+      "name": "copy-anything",
+      "versions": [
+        "4.1.0"
+      ]
+    },
+    {
+      "name": "csstype",
+      "versions": [
+        "3.2.3"
+      ]
+    },
+    {
+      "name": "es-module-lexer",
+      "versions": [
+        "2.3.2"
+      ]
+    },
+    {
+      "name": "estree-walker",
+      "versions": [
+        "2.0.2",
+        "3.0.3"
+      ]
+    },
+    {
+      "name": "fdir",
+      "versions": [
+        "6.5.0"
+      ]
+    },
+    {
+      "name": "hookable",
+      "versions": [
+        "5.5.3"
+      ]
+    },
+    {
+      "name": "magic-string",
+      "versions": [
+        "0.30.21",
+        "1.4.1"
+      ]
+    },
+    {
+      "name": "mitt",
+      "versions": [
+        "3.0.1"
+      ]
+    },
+    {
+      "name": "muggle-string",
+      "versions": [
+        "0.4.1"
+      ]
+    },
+    {
+      "name": "nanoid",
+      "versions": [
+        "3.3.19"
+      ]
+    },
+    {
+      "name": "obug",
+      "versions": [
+        "2.2.1"
+      ]
+    },
+    {
+      "name": "path-browserify",
+      "versions": [
+        "1.0.1"
+      ]
+    },
+    {
+      "name": "perfect-debounce",
+      "versions": [
+        "1.0.0"
+      ]
+    },
+    {
+      "name": "picomatch",
+      "versions": [
+        "4.0.7"
+      ]
+    },
+    {
+      "name": "pinia",
+      "versions": [
+        "3.0.4"
+      ]
+    },
+    {
+      "name": "postcss",
+      "versions": [
+        "8.5.28"
+      ]
+    },
+    {
+      "name": "prettier",
+      "versions": [
+        "3.9.7"
+      ]
+    },
+    {
+      "name": "rfdc",
+      "versions": [
+        "1.4.1"
+      ]
+    },
+    {
+      "name": "rolldown",
+      "versions": [
+        "1.2.8"
+      ]
+    },
+    {
+      "name": "stackback",
+      "versions": [
+        "0.0.2"
+      ]
+    },
+    {
+      "name": "std-env",
+      "versions": [
+        "4.2.0"
+      ]
+    },
+    {
+      "name": "superjson",
+      "versions": [
+        "2.2.6"
+      ]
+    },
+    {
+      "name": "tinybench",
+      "versions": [
+        "6.1.4"
+      ]
+    },
+    {
+      "name": "tinyexec",
+      "versions": [
+        "1.3.0"
+      ]
+    },
+    {
+      "name": "tinyglobby",
+      "versions": [
+        "0.2.17"
+      ]
+    },
+    {
+      "name": "undici-types",
+      "versions": [
+        "6.21.0"
+      ]
+    },
+    {
+      "name": "vite",
+      "versions": [
+        "8.3.0"
+      ]
+    },
+    {
+      "name": "vitest",
+      "versions": [
+        "5.0.1"
+      ]
+    },
+    {
+      "name": "vscode-uri",
+      "versions": [
+        "3.2.0"
+      ]
+    },
+    {
+      "name": "vue",
+      "versions": [
+        "3.5.43"
+      ]
+    },
+    {
+      "name": "vue-router",
+      "versions": [
+        "4.6.4"
+      ]
+    },
+    {
+      "name": "vue-tsc",
+      "versions": [
+        "3.3.11"
+      ]
+    },
+    {
+      "name": "why-is-node-running",
+      "versions": [
+        "2.3.0"
+      ]
+    }
+  ],
+  "Apache-2.0": [
+    {
+      "name": "detect-libc",
+      "versions": [
+        "2.1.2"
+      ]
+    },
+    {
+      "name": "expect-type",
+      "versions": [
+        "1.4.0"
+      ]
+    },
+    {
+      "name": "typescript",
+      "versions": [
+        "5.9.3"
+      ]
+    }
+  ],
+  "BSD-2-Clause": [
+    {
+      "name": "entities",
+      "versions": [
+        "7.0.1"
+      ]
+    }
+  ],
+  "MPL-2.0": [
+    {
+      "name": "lightningcss",
+      "versions": [
+        "1.33.0"
+      ]
+    },
+    {
+      "name": "lightningcss-win32-x64-msvc",
+      "versions": [
+        "1.33.0"
+      ]
+    }
+  ],
+  "ISC": [
+    {
+      "name": "picocolors",
+      "versions": [
+        "1.1.1"
+      ]
+    },
+    {
+      "name": "siginfo",
+      "versions": [
+        "2.0.0"
+      ]
+    }
+  ],
+  "BSD-3-Clause": [
+    {
+      "name": "source-map-js",
+      "versions": [
+        "1.2.1"
+      ]
+    },
+    {
+      "name": "speakingurl",
+      "versions": [
+        "14.0.1"
+      ]
+    }
+  ]
+}
