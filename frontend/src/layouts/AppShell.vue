@@ -7,6 +7,7 @@ import {
   Cpu,
   Files,
   GitBranch,
+  KeyRound,
   LayoutDashboard,
   Library,
   ListTodo,
@@ -22,9 +23,11 @@ import {
   ShieldCheck,
   UserRound,
   Users,
+  X,
 } from 'lucide-vue-next'
 import { computed, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { changePassword } from '../api/auth'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
@@ -33,6 +36,13 @@ const auth = useAuthStore()
 const activeSpaceId = shallowRef(auth.spaces[0]?.id ?? '')
 const collapsed = shallowRef(false)
 const profileOpen = shallowRef(false)
+const passwordOpen = shallowRef(false)
+const passwordBusy = shallowRef(false)
+const passwordError = shallowRef('')
+const passwordSuccess = shallowRef('')
+const currentPassword = shallowRef('')
+const newPassword = shallowRef('')
+const confirmPassword = shallowRef('')
 const openGroups = shallowRef(new Set(['knowledge', 'retrieval', 'customers', 'system']))
 
 const iconMap: Record<string, LucideIcon> = {
@@ -79,6 +89,49 @@ function openProfileMenu(): void {
 
 function closeProfileMenu(): void {
   profileOpen.value = false
+}
+
+function openPasswordDialog(): void {
+  profileOpen.value = false
+  passwordError.value = ''
+  passwordSuccess.value = ''
+  currentPassword.value = ''
+  newPassword.value = ''
+  confirmPassword.value = ''
+  passwordOpen.value = true
+}
+
+function closePasswordDialog(): void {
+  if (!passwordBusy.value)
+    passwordOpen.value = false
+}
+
+async function submitPasswordChange(): Promise<void> {
+  passwordError.value = ''
+  passwordSuccess.value = ''
+  if (newPassword.value.length < 8) {
+    passwordError.value = '新密码至少需要 8 位'
+    return
+  }
+  if (newPassword.value !== confirmPassword.value) {
+    passwordError.value = '两次输入的新密码不一致'
+    return
+  }
+  passwordBusy.value = true
+  try {
+    await changePassword(currentPassword.value, newPassword.value)
+    passwordSuccess.value = '密码已修改，请使用新密码重新登录'
+    window.setTimeout(async () => {
+      await auth.signOut()
+      await router.push('/login')
+    }, 900)
+  }
+  catch (cause) {
+    passwordError.value = cause instanceof Error ? cause.message : '密码修改失败'
+  }
+  finally {
+    passwordBusy.value = false
+  }
 }
 
 function handleProfileFocusOut(event: FocusEvent): void {
@@ -160,6 +213,9 @@ async function signOut(): Promise<void> {
               <ChevronDown :size="15" :class="{ 'profile-chevron-open': profileOpen }" />
             </button>
             <div v-if="profileOpen" class="profile-menu" role="menu">
+              <button class="profile-menu-item" role="menuitem" @click="openPasswordDialog">
+                <KeyRound :size="15" />修改密码
+              </button>
               <button class="profile-menu-item" role="menuitem" @click="signOut">
                 <LogOut :size="15" />退出登录
               </button>
@@ -170,5 +226,39 @@ async function signOut(): Promise<void> {
         <RouterView />
       </div>
     </main>
+  </div>
+  <div v-if="passwordOpen" class="dialog-backdrop" @click.self="closePasswordDialog">
+    <section class="dialog-card password-dialog" aria-labelledby="password-dialog-title">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">
+            账号安全
+          </p><h2 id="password-dialog-title">
+            修改密码
+          </h2>
+        </div>
+        <button class="dialog-close" type="button" aria-label="关闭修改密码" @click="closePasswordDialog">
+          <X :size="16" />
+        </button>
+      </div>
+      <form @submit.prevent="submitPasswordChange">
+        <label>当前密码<input v-model="currentPassword" type="password" autocomplete="current-password" required></label>
+        <label>新密码<input v-model="newPassword" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label>确认新密码<input v-model="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></label>
+        <p v-if="passwordError" class="field-error">
+          {{ passwordError }}
+        </p>
+        <p v-if="passwordSuccess" class="field-success">
+          {{ passwordSuccess }}
+        </p>
+        <div class="dialog-actions">
+          <button class="secondary-button" type="button" :disabled="passwordBusy" @click="closePasswordDialog">
+            取消
+          </button><button class="primary-button" type="submit" :disabled="passwordBusy">
+            {{ passwordBusy ? '提交中…' : '确认修改' }}
+          </button>
+        </div>
+      </form>
+    </section>
   </div>
 </template>

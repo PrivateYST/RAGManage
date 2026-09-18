@@ -6,6 +6,7 @@ from typing import Annotated, Any, cast
 
 import asyncpg
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -53,6 +54,11 @@ class UserPatch(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=100)
     status: str | None = Field(default=None, pattern=r"^(active|disabled)$")
     password: str | None = Field(default=None, min_length=8, max_length=200)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8, max_length=200)
 
 
 class KnowledgeBaseCreate(BaseModel):
@@ -267,6 +273,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/v1/auth/me")
     async def me(request: Request) -> dict[str, Any]:
         return await _authenticated_user(config, request)
+
+    @app.post("/api/v1/auth/password", status_code=204)
+    async def change_password(payload: PasswordChange, request: Request, response: Response) -> None:
+        context = await _authenticated_user(config, request)
+        connection = await _database(config)
+        try:
+            user_id = int(context["user"]["id"])
+            password_hash = await connection.fetchval("SELECT password_hash FROM users WHERE id = $1", user_id)
+            try:
+                password_hasher.verify(password_hash, payload.current_password)
+            except (VerifyMismatchError, VerificationError, InvalidHashError) as error:
+                raise HTTPException(status_code=400, detail="当前密码不正确") from error
+            if payload.current_password == payload.new_password:
+                raise HTTPException(status_code=400, detail="新密码不能与当前密码相同")
+            await connection.execute(
+                "UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1",
+                user_id,
+                password_hasher.hash(payload.new_password),
+            )
+            await connection.execute(
+                "UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL",
+                user_id,
+            )
+            response.delete_cookie(SESSION_COOKIE)
+        finally:
+            await connection.close()
 
     @app.get("/api/v1/admin/menus")
     async def admin_menus(request: Request) -> dict[str, Any]:

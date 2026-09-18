@@ -47,3 +47,10 @@ export function currentUser(): Promise<AuthContext> {
 export function logout(): Promise<void> {
   return apiRequest<void>('/api/v1/auth/logout', { method: 'POST' })
 }
+
+export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return apiRequest<void>('/api/v1/auth/password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  })
+}
