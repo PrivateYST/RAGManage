@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Annotated, Any, cast
 
 import asyncpg
-from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -275,12 +275,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await _authenticated_user(config, request)
 
     @app.post("/api/v1/auth/password", status_code=204)
-    async def change_password(payload: PasswordChange, request: Request, response: Response) -> None:
+    async def change_password(
+        payload: PasswordChange, request: Request, response: Response
+    ) -> None:
         context = await _authenticated_user(config, request)
         connection = await _database(config)
         try:
             user_id = int(context["user"]["id"])
-            password_hash = await connection.fetchval("SELECT password_hash FROM users WHERE id = $1", user_id)
+            password_hash = await connection.fetchval(
+                "SELECT password_hash FROM users WHERE id = $1", user_id
+            )
             try:
                 password_hasher.verify(password_hash, payload.current_password)
             except (VerifyMismatchError, VerificationError, InvalidHashError) as error:
