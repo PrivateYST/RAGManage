@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Send, Square } from '@/components'
 
-defineProps<{ sending: boolean; canSend: boolean; disabledReason: string }>()
-const emit = defineEmits<{ send: []; stop: [] }>()
+defineProps<{ sending: boolean, canSend: boolean, disabledReason: string }>()
+const emit = defineEmits<{ send: [], stop: [] }>()
 const question = defineModel<string>({ required: true })
 </script>
 

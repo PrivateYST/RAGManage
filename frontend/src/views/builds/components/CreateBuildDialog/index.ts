@@ -8,7 +8,7 @@ export function useCreateBuildDialog(
   const targetKnowledgeBaseId = shallowRef('')
 
   const selectedKnowledgeBase = computed(
-    () => props.knowledgeBases.find((item) => item.id === targetKnowledgeBaseId.value) ?? null,
+    () => props.knowledgeBases.find(item => item.id === targetKnowledgeBaseId.value) ?? null,
   )
   const canConfirm = computed(() => Boolean(selectedKnowledgeBase.value) && !props.creating)
 
@@ -16,12 +16,13 @@ export function useCreateBuildDialog(
     [
       () => props.open,
       () => props.initialKnowledgeBaseId,
-      () => props.knowledgeBases.map((item) => item.id).join(','),
+      () => props.knowledgeBases.map(item => item.id).join(','),
     ],
     ([open]) => {
-      if (!open) return
+      if (!open)
+        return
       const initialExists = props.knowledgeBases.some(
-        (item) => item.id === props.initialKnowledgeBaseId,
+        item => item.id === props.initialKnowledgeBaseId,
       )
       targetKnowledgeBaseId.value = initialExists
         ? props.initialKnowledgeBaseId
@@ -31,11 +32,13 @@ export function useCreateBuildDialog(
   )
 
   function handleClose(): void {
-    if (!props.creating) actions.close()
+    if (!props.creating)
+      actions.close()
   }
 
   function handleConfirm(): void {
-    if (canConfirm.value) actions.confirm(targetKnowledgeBaseId.value)
+    if (canConfirm.value)
+      actions.confirm(targetKnowledgeBaseId.value)
   }
 
   return {

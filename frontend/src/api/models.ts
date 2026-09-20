@@ -27,7 +27,7 @@ export interface IngestionProfile {
   id: string
   definition: {
     parser?: string
-    chunking?: { strategy?: string; max_chars?: number; overlap_chars?: number }
+    chunking?: { strategy?: string, max_chars?: number, overlap_chars?: number }
     preserve_locator?: boolean
   }
   definition_hash: string
@@ -44,7 +44,7 @@ export interface EmbeddingProfile {
   model_revision: string
   dimension: number
   dtype: string
-  instructions: { query?: string; document?: string }
+  instructions: { query?: string, document?: string }
   normalization: string
   definition_hash: string
   created_at: string
@@ -55,8 +55,8 @@ export interface RuntimeProfile {
   id: string
   embedding_profile_id: string
   definition: {
-    retrieval?: { mode?: string; top_k?: number; context_max_chars?: number }
-    generation?: { endpoint_id?: number; model?: string; temperature?: number }
+    retrieval?: { mode?: string, top_k?: number, context_max_chars?: number }
+    generation?: { endpoint_id?: number, model?: string, temperature?: number }
     answer_rules?: string
   }
   definition_hash: string
@@ -155,6 +155,6 @@ export function createRuntimeProfile(payload: {
 
 export function activateRuntimeProfile(
   id: string,
-): Promise<{ id: string; active: boolean; effect_scope: 'immediate' | 'rebuild_required' }> {
+): Promise<{ id: string, active: boolean, effect_scope: 'immediate' | 'rebuild_required' }> {
   return apiRequest(`/api/v1/runtime-profiles/${id}/activate`, { method: 'POST' })
 }

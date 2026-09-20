@@ -1,6 +1,6 @@
+import type { EndpointFormDialogProps } from './type'
 import type { ModelEndpointType } from '@/api/models'
 import type { EndpointSubmitPayload } from '@/views/models/type'
-import type { EndpointFormDialogProps } from './type'
 import { reactive, shallowRef, watch } from 'vue'
 
 const MODEL_SEPARATOR_PATTERN = /[\n,]/
@@ -21,7 +21,8 @@ export function useEndpointForm(
   watch(
     () => [props.open, props.endpoint] as const,
     () => {
-      if (!props.open) return
+      if (!props.open)
+        return
       error.value = ''
       form.name = props.endpoint?.name ?? ''
       form.provider = props.endpoint?.provider ?? 'open_webui'
@@ -37,7 +38,7 @@ export function useEndpointForm(
       ...new Set(
         form.modelsText
           .split(MODEL_SEPARATOR_PATTERN)
-          .map((item) => item.trim())
+          .map(item => item.trim())
           .filter(Boolean),
       ),
     ]

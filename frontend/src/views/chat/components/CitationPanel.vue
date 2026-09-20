@@ -2,11 +2,12 @@
 import type { Citation } from '@/api/chat'
 import { ExternalLink, FileText, X } from '@/components'
 
-defineProps<{ open: boolean; citations: Citation[] }>()
+defineProps<{ open: boolean, citations: Citation[] }>()
 const emit = defineEmits<{ close: [] }>()
 
 function locatorLabel(locator: Record<string, number>): string {
-  if (locator.page !== undefined) return `第 ${locator.page} 页`
+  if (locator.page !== undefined)
+    return `第 ${locator.page} 页`
   if (locator.line_start !== undefined)
     return `第 ${locator.line_start}–${locator.line_end ?? locator.line_start} 行`
   if (locator.char_start !== undefined)
@@ -30,9 +31,7 @@ function locatorLabel(locator: Record<string, number>): string {
         </div>
         <div>
           <strong>{{ citation.document_title }}</strong>
-          <span
-            >V{{ citation.version_no }} · {{ citation.section_path.join(' / ') || '正文' }}</span
-          >
+          <span>V{{ citation.version_no }} · {{ citation.section_path.join(' / ') || '正文' }}</span>
           <p>{{ citation.content }}</p>
           <RouterLink :to="citation.source_path">
             {{ locatorLabel(citation.locator) }}<ExternalLink :size="11" aria-hidden="true" />

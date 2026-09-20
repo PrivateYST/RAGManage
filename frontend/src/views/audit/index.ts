@@ -1,7 +1,7 @@
 /** 操作日志页面状态组合器，统一管理授权范围、筛选、游标分页和详情选择。 */
 
-import type { AuditLogItem } from '@/api/audit'
 import type { AuditFilterState, SelectedAuditLog } from './type'
+import type { AuditLogItem } from '@/api/audit'
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { fetchAuditLogs } from '@/api/audit'
 import { useAuthStore } from '@/store/auth'
@@ -26,11 +26,13 @@ export function useAuditLogs() {
 
   /** 按当前范围加载首屏或下一页；首屏查询会替换旧结果并重置游标。 */
   async function load(reset = true): Promise<void> {
-    if (!canLoadSpace.value) return
+    if (!canLoadSpace.value)
+      return
     if (reset) {
       loading.value = true
       nextCursor.value = null
-    } else {
+    }
+    else {
       loadingMore.value = true
     }
     error.value = ''
@@ -45,10 +47,13 @@ export function useAuditLogs() {
       })
       items.value = reset ? page.items : [...items.value, ...page.items]
       nextCursor.value = page.next_cursor
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '操作日志加载失败'
-      if (reset) items.value = []
-    } finally {
+      if (reset)
+        items.value = []
+    }
+    finally {
       loading.value = false
       loadingMore.value = false
     }

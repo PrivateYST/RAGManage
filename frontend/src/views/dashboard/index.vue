@@ -21,7 +21,7 @@ const documentCount = computed(() =>
   knowledgeBases.value.reduce((total, item) => total + item.document_count, 0),
 )
 const activeTasks = computed(() =>
-  tasks.value.filter((task) => ['queued', 'running'].includes(task.state)),
+  tasks.value.filter(task => ['queued', 'running'].includes(task.state)),
 )
 const pendingTaskCount = computed(() => activeTasks.value.length)
 
@@ -42,9 +42,11 @@ async function loadDashboard(): Promise<void> {
     knowledgeBases.value = knowledgeBaseResponse.items
     tasks.value = taskResponse.items
     serviceReady.value = health.status === 'ready'
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '工作台数据加载失败'
-  } finally {
+  }
+  finally {
     controller.abort()
     loading.value = false
   }
@@ -57,13 +59,17 @@ watch(() => auth.activeSpaceId, loadDashboard, { immediate: true })
   <section class="page-section">
     <div class="page-intro">
       <div>
-        <p class="eyebrow">{{ currentSpace?.name || '客户空间' }} / 概览</p>
+        <p class="eyebrow">
+          {{ currentSpace?.name || '客户空间' }} / 概览
+        </p>
         <h1>工作台</h1>
         <p class="page-description">
           管理你的知识内容，查看处理状态，并从已发布资料中获得可追溯答案。
         </p>
       </div>
-      <RouterLink class="primary-button" to="/documents"> <Plus :size="16" />上传文档 </RouterLink>
+      <RouterLink class="primary-button" to="/documents">
+        <Plus :size="16" />上传文档
+      </RouterLink>
     </div>
     <div v-if="error" class="error-banner">
       {{ error }}
@@ -78,8 +84,7 @@ watch(() => auth.activeSpaceId, loadDashboard, { immediate: true })
           <Layers3 :size="19" />
         </div>
         <div>
-          <span>知识库</span><strong>{{ knowledgeBases.length }}</strong
-          ><small>当前空间可用</small>
+          <span>知识库</span><strong>{{ knowledgeBases.length }}</strong><small>当前空间可用</small>
         </div>
       </div>
       <div class="metric-card">
@@ -87,8 +92,7 @@ watch(() => auth.activeSpaceId, loadDashboard, { immediate: true })
           <FileText :size="19" />
         </div>
         <div>
-          <span>文档</span><strong>{{ documentCount }}</strong
-          ><small>当前空间可用</small>
+          <span>文档</span><strong>{{ documentCount }}</strong><small>当前空间可用</small>
         </div>
       </div>
       <div class="metric-card">
@@ -96,8 +100,7 @@ watch(() => auth.activeSpaceId, loadDashboard, { immediate: true })
           <ListChecks :size="19" />
         </div>
         <div>
-          <span>待处理任务</span><strong>{{ pendingTaskCount }}</strong
-          ><small>{{ pendingTaskCount ? '解析或构建正在进行' : '当前没有运行中的任务' }}</small>
+          <span>待处理任务</span><strong>{{ pendingTaskCount }}</strong><small>{{ pendingTaskCount ? '解析或构建正在进行' : '当前没有运行中的任务' }}</small>
         </div>
       </div>
       <div class="metric-card">
@@ -105,11 +108,9 @@ watch(() => auth.activeSpaceId, loadDashboard, { immediate: true })
           <Bot :size="19" />
         </div>
         <div>
-          <span>基础服务</span
-          ><strong class="metric-ok">{{
+          <span>基础服务</span><strong class="metric-ok">{{
             serviceReady === true ? '正常' : serviceReady === false ? '异常' : '未知'
-          }}</strong
-          ><small>数据库、队列与文件存储</small>
+          }}</strong><small>数据库、队列与文件存储</small>
         </div>
       </div>
     </div>
@@ -117,7 +118,9 @@ watch(() => auth.activeSpaceId, loadDashboard, { immediate: true })
       <section class="content-card">
         <div class="card-heading">
           <div>
-            <p class="eyebrow">内容管理</p>
+            <p class="eyebrow">
+              内容管理
+            </p>
             <h2>知识库</h2>
           </div>
           <RouterLink class="text-link" to="/knowledge-bases">
@@ -130,8 +133,7 @@ watch(() => auth.activeSpaceId, loadDashboard, { immediate: true })
             {{ currentKnowledgeBase.name.slice(0, 1) }}
           </div>
           <div class="kb-info">
-            <strong>{{ currentKnowledgeBase.name }}</strong
-            ><span>{{ currentKnowledgeBase.description || '暂无知识库说明' }}</span>
+            <strong>{{ currentKnowledgeBase.name }}</strong><span>{{ currentKnowledgeBase.description || '暂无知识库说明' }}</span>
             <div class="kb-tags">
               <span>{{
                 currentKnowledgeBase.status === 'published'
@@ -139,16 +141,12 @@ watch(() => auth.activeSpaceId, loadDashboard, { immediate: true })
                   : currentKnowledgeBase.status === 'indexing'
                     ? '构建中'
                     : '草稿'
-              }}</span
-              ><small
-                >更新于
-                {{ new Date(currentKnowledgeBase.updated_at).toLocaleDateString('zh-CN') }}</small
-              >
+              }}</span><small>更新于
+                {{ new Date(currentKnowledgeBase.updated_at).toLocaleDateString('zh-CN') }}</small>
             </div>
           </div>
           <div class="kb-count">
-            <strong>{{ currentKnowledgeBase.document_count }}</strong
-            ><span>篇文档</span>
+            <strong>{{ currentKnowledgeBase.document_count }}</strong><span>篇文档</span>
           </div>
         </div>
         <div v-else class="empty-state compact">
@@ -159,15 +157,23 @@ watch(() => auth.activeSpaceId, loadDashboard, { immediate: true })
         </div>
         <div class="card-divider" />
         <div class="quick-actions">
-          <RouterLink to="/documents"> <FileText :size="16" />文档管理 </RouterLink>
-          <RouterLink to="/chat"> <Bot :size="16" />开始问答 </RouterLink>
-          <RouterLink to="/releases"> <Layers3 :size="16" />发布版本 </RouterLink>
+          <RouterLink to="/documents">
+            <FileText :size="16" />文档管理
+          </RouterLink>
+          <RouterLink to="/chat">
+            <Bot :size="16" />开始问答
+          </RouterLink>
+          <RouterLink to="/releases">
+            <Layers3 :size="16" />发布版本
+          </RouterLink>
         </div>
       </section>
       <section class="content-card">
         <div class="card-heading">
           <div>
-            <p class="eyebrow">最近动态</p>
+            <p class="eyebrow">
+              最近动态
+            </p>
             <h2>任务状态</h2>
           </div>
           <RouterLink class="text-link" to="/tasks">
@@ -187,8 +193,7 @@ watch(() => auth.activeSpaceId, loadDashboard, { immediate: true })
             <div>
               <strong>{{
                 task.task_type === 'document_parse' ? '文档解析' : task.task_type
-              }}</strong
-              ><small>{{ task.completed_items }} / {{ task.item_count || 1 }} 项完成</small>
+              }}</strong><small>{{ task.completed_items }} / {{ task.item_count || 1 }} 项完成</small>
             </div>
             <span class="task-state-label">{{
               task.state === 'running' ? '处理中' : '排队中'

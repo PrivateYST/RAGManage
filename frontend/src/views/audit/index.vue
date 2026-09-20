@@ -29,7 +29,8 @@ function formatTime(value: string): string {
 /** 生成表格中的安全摘要预览；完整 JSON 仅在详情弹窗展示。 */
 function summaryText(item: AuditLogItem): string {
   const entries = Object.entries(item.change_summary)
-  if (!entries.length) return '没有附加变更摘要'
+  if (!entries.length)
+    return '没有附加变更摘要'
   const text = entries
     .slice(0, 3)
     .map(([key, value]) => {
@@ -45,7 +46,9 @@ function summaryText(item: AuditLogItem): string {
   <section class="page-section audit-page">
     <div class="page-intro">
       <div>
-        <p class="eyebrow">系统管理</p>
+        <p class="eyebrow">
+          系统管理
+        </p>
         <h1>操作日志</h1>
         <p class="page-description">
           查询登录、授权、内容发布和配置变更，空间日志仅对显式授权的空间管理员开放。
@@ -101,7 +104,7 @@ function summaryText(item: AuditLogItem): string {
             v-model.trim="filters.actor"
             maxlength="100"
             placeholder="姓名或登录名"
-          />
+          >
         </div>
       </label>
       <div class="audit-filter-actions">
@@ -131,8 +134,7 @@ function summaryText(item: AuditLogItem): string {
         <span class="loading-spinner" /><strong>正在加载操作日志…</strong>
       </div>
       <div v-else-if="!items.length" class="audit-state empty">
-        <FileClock :size="24" aria-hidden="true" /><strong>没有符合条件的日志</strong
-        ><span>调整筛选条件后重新查询。</span>
+        <FileClock :size="24" aria-hidden="true" /><strong>没有符合条件的日志</strong><span>调整筛选条件后重新查询。</span>
       </div>
       <div v-else class="audit-table-wrap">
         <table>
@@ -153,16 +155,13 @@ function summaryText(item: AuditLogItem): string {
                 <time :datetime="item.created_at">{{ formatTime(item.created_at) }}</time>
               </td>
               <td>
-                <strong>{{ item.actor_name || '系统' }}</strong
-                ><small>{{ item.actor_login || 'system' }}</small>
+                <strong>{{ item.actor_name || '系统' }}</strong><small>{{ item.actor_login || 'system' }}</small>
               </td>
               <td>
-                <span class="audit-action-badge">{{ auditActionLabel(item.action) }}</span
-                ><code>{{ item.action }}</code>
+                <span class="audit-action-badge">{{ auditActionLabel(item.action) }}</span><code>{{ item.action }}</code>
               </td>
               <td>
-                <strong>{{ auditTargetLabel(item.target_type) }}</strong
-                ><small>#{{ item.target_id || '—' }}</small>
+                <strong>{{ auditTargetLabel(item.target_type) }}</strong><small>#{{ item.target_id || '—' }}</small>
               </td>
               <td>
                 <p>{{ summaryText(item) }}</p>

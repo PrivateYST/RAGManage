@@ -5,7 +5,7 @@ import { useReleaseDiffDialog } from './index'
 import './index.scss'
 
 const props = defineProps<ReleaseDiffDialogProps>()
-const emit = defineEmits<{ close: []; publish: [] }>()
+const emit = defineEmits<{ close: [], publish: [] }>()
 
 const {
   canPublish,
@@ -35,7 +35,9 @@ const {
           <div class="release-diff-heading">
             <span><GitCompareArrows :size="18" aria-hidden="true" /></span>
             <div>
-              <h2 id="release-diff-title">发布前检查</h2>
+              <h2 id="release-diff-title">
+                发布前检查
+              </h2>
               <p>校验候选构建，并比较当前 Release 的文档与模型配置。</p>
             </div>
           </div>
@@ -62,9 +64,7 @@ const {
               <strong>{{
                 preview.current_release ? `Release #${preview.current_release.id}` : '尚未发布'
               }}</strong>
-              <small v-if="preview.current_release"
-                >构建 #{{ preview.current_release.build_id }}</small
-              >
+              <small v-if="preview.current_release">构建 #{{ preview.current_release.build_id }}</small>
               <small v-else>本次将创建首个发布版本</small>
             </article>
             <article class="candidate">
@@ -84,7 +84,9 @@ const {
               <strong>{{
                 preview.validation.ready ? '发布前校验通过' : '发布前校验未通过'
               }}</strong>
-              <p v-if="preview.validation.ready">文档、切片、向量、维度和空间范围均完整一致。</p>
+              <p v-if="preview.validation.ready">
+                文档、切片、向量、维度和空间范围均完整一致。
+              </p>
               <ul v-else>
                 <li
                   v-for="item in preview.validation.errors"
@@ -119,15 +121,11 @@ const {
               }}</span>
             </div>
             <div class="release-config-grid">
-              <span>候选 Profile</span
-              ><strong
-                >#{{ preview.build.embedding_profile_id }} ·
-                {{ shortHash(preview.build.embedding_definition_hash) }}</strong
-              >
+              <span>候选 Profile</span><strong>#{{ preview.build.embedding_profile_id }} ·
+                {{ shortHash(preview.build.embedding_definition_hash) }}</strong>
               <span>接入方式</span><strong>{{ providerLabel(preview.build.provider) }}</strong>
               <span>网关端点</span><strong>{{ preview.build.base_url }}</strong>
-              <span>嵌入模型</span
-              ><strong>{{ preview.build.model_name }} · {{ preview.build.dimension }} 维</strong>
+              <span>嵌入模型</span><strong>{{ preview.build.model_name }} · {{ preview.build.dimension }} 维</strong>
               <span>模型摘要</span><strong>{{ shortHash(preview.build.model_revision) }}</strong>
               <span>清单摘要</span><strong>{{ shortHash(preview.build.manifest_hash) }}</strong>
             </div>

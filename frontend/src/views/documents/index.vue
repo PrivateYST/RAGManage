@@ -12,11 +12,11 @@ import {
   fetchVersionPreview,
   uploadDocument,
 } from '@/api/documents'
+import { FileText, Plus, RefreshCw, X } from '@/components'
+import { useAuthStore } from '@/store/auth'
 import DocumentFilters from '@/views/documents/components/DocumentFilters.vue'
 import DocumentTable from '@/views/documents/components/DocumentTable.vue'
 import UploadDialog from '@/views/documents/components/UploadDialog.vue'
-import { FileText, Plus, RefreshCw, X } from '@/components'
-import { useAuthStore } from '@/store/auth'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -44,14 +44,14 @@ const visibleDocuments = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase()
   return documents.value.filter((document) => {
     const matchesQuery = !query || document.title.toLocaleLowerCase().includes(query)
-    const matchesStatus =
-      statusFilter.value === 'all' || document.parse_status === statusFilter.value
+    const matchesStatus
+      = statusFilter.value === 'all' || document.parse_status === statusFilter.value
     return matchesQuery && matchesStatus
   })
 })
 
 const activeKnowledgeBase = computed(() =>
-  knowledgeBases.value.find((item) => item.id === activeKnowledgeBaseId.value),
+  knowledgeBases.value.find(item => item.id === activeKnowledgeBaseId.value),
 )
 
 const purposeLabels: Record<string, string> = {
@@ -72,17 +72,20 @@ async function loadKnowledgeBases(): Promise<void> {
       return
     }
     knowledgeBases.value = (await fetchKnowledgeBases(auth.activeSpaceId)).items
-    const requestedKnowledgeBaseId =
-      typeof route.query.knowledge_base_id === 'string' ? route.query.knowledge_base_id : ''
+    const requestedKnowledgeBaseId
+      = typeof route.query.knowledge_base_id === 'string' ? route.query.knowledge_base_id : ''
     activeKnowledgeBaseId.value = knowledgeBases.value.some(
-      (item) => item.id === requestedKnowledgeBaseId,
+      item => item.id === requestedKnowledgeBaseId,
     )
       ? requestedKnowledgeBaseId
       : (knowledgeBases.value[0]?.id ?? '')
-    if (!activeKnowledgeBaseId.value) documents.value = []
-  } catch (cause) {
+    if (!activeKnowledgeBaseId.value)
+      documents.value = []
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '知识库加载失败'
-  } finally {
+  }
+  finally {
     loadingKnowledgeBases.value = false
   }
 }
@@ -96,9 +99,11 @@ async function loadDocuments(): Promise<void> {
   error.value = ''
   try {
     documents.value = (await fetchDocuments(activeKnowledgeBaseId.value)).items
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '文档加载失败'
-  } finally {
+  }
+  finally {
     loading.value = false
   }
 }
@@ -109,16 +114,19 @@ function openUpload(): void {
 }
 
 async function handleUpload(file: File): Promise<void> {
-  if (!activeKnowledgeBaseId.value) return
+  if (!activeKnowledgeBaseId.value)
+    return
   uploading.value = true
   uploadError.value = ''
   try {
     await uploadDocument(activeKnowledgeBaseId.value, file)
     uploadOpen.value = false
     await loadDocuments()
-  } catch (cause) {
+  }
+  catch (cause) {
     uploadError.value = cause instanceof Error ? cause.message : '上传失败，请稍后重试'
-  } finally {
+  }
+  finally {
     uploading.value = false
   }
 }
@@ -135,10 +143,12 @@ async function openDetail(document: DocumentRow, preferredVersionId?: string): P
     detail.value = data
     detailLoading.value = false
 
-    const selectedVersion =
-      data.versions.find((version) => version.id === preferredVersionId) ?? data.versions[0]
-    if (selectedVersion) await loadDetailChunks(selectedVersion.id)
-  } catch (cause) {
+    const selectedVersion
+      = data.versions.find(version => version.id === preferredVersionId) ?? data.versions[0]
+    if (selectedVersion)
+      await loadDetailChunks(selectedVersion.id)
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '文档详情加载失败'
     detailLoading.value = false
   }
@@ -165,10 +175,13 @@ async function loadDetailChunks(versionId: string): Promise<void> {
         .querySelector(`[data-chunk-id="${highlightedChunkId.value}"]`)
         ?.scrollIntoView({ block: 'center' })
     }
-  } catch (cause) {
+  }
+  catch (cause) {
     detailChunksError.value = cause instanceof Error ? cause.message : '切片预览加载失败'
-  } finally {
-    if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+  }
+  finally {
+    if (timeoutId !== undefined)
+      window.clearTimeout(timeoutId)
     detailChunksLoading.value = false
   }
 }
@@ -183,30 +196,36 @@ function closeDetail(): void {
 
 async function handleDisable(document: DocumentRow): Promise<void> {
   // eslint-disable-next-line no-alert
-  if (!window.confirm(`确定停用“${document.title}”吗？停用后它不会进入新的发布版本。`)) return
+  if (!window.confirm(`确定停用“${document.title}”吗？停用后它不会进入新的发布版本。`))
+    return
   busyDocumentId.value = document.id
   error.value = ''
   try {
     await disableDocument(document.id)
     await loadDocuments()
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '停用失败'
-  } finally {
+  }
+  finally {
     busyDocumentId.value = null
   }
 }
 
 async function handleRemove(document: DocumentRow): Promise<void> {
   // eslint-disable-next-line no-alert
-  if (!window.confirm(`确定删除“${document.title}”吗？删除后文档将从列表隐藏。`)) return
+  if (!window.confirm(`确定删除“${document.title}”吗？删除后文档将从列表隐藏。`))
+    return
   busyDocumentId.value = document.id
   error.value = ''
   try {
     await deleteDocument(document.id)
     await loadDocuments()
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '删除失败'
-  } finally {
+  }
+  finally {
     busyDocumentId.value = null
   }
 }
@@ -234,13 +253,16 @@ watch(
   [documents, () => route.fullPath],
   async () => {
     const documentId = typeof route.query.document_id === 'string' ? route.query.document_id : ''
-    const versionId =
-      typeof route.query.version_id === 'string' ? route.query.version_id : undefined
-    if (!documentId) return
+    const versionId
+      = typeof route.query.version_id === 'string' ? route.query.version_id : undefined
+    if (!documentId)
+      return
     const citationKey = `${documentId}:${versionId ?? ''}:${String(route.query.chunk_id ?? '')}`
-    if (citationKey === openedCitationKey) return
-    const target = documents.value.find((document) => document.id === documentId)
-    if (!target) return
+    if (citationKey === openedCitationKey)
+      return
+    const target = documents.value.find(document => document.id === documentId)
+    if (!target)
+      return
     openedCitationKey = citationKey
     await openDetail(target, versionId)
   },
@@ -250,7 +272,7 @@ watch(
 watch(
   () => route.query.knowledge_base_id,
   (value) => {
-    if (typeof value === 'string' && knowledgeBases.value.some((item) => item.id === value))
+    if (typeof value === 'string' && knowledgeBases.value.some(item => item.id === value))
       activeKnowledgeBaseId.value = value
   },
 )
@@ -260,9 +282,13 @@ watch(
   <section class="page-section documents-page">
     <div class="page-intro">
       <div>
-        <p class="eyebrow">知识库管理</p>
+        <p class="eyebrow">
+          知识库管理
+        </p>
         <h1>文档管理</h1>
-        <p class="page-description">上传资料、确认解析结果，并在发布前检查原文定位和处理告警。</p>
+        <p class="page-description">
+          上传资料、确认解析结果，并在发布前检查原文定位和处理告警。
+        </p>
       </div>
       <button
         class="primary-button"
@@ -347,7 +373,9 @@ watch(
     <section class="dialog-card document-detail-dialog" aria-labelledby="document-detail-title">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">文档详情</p>
+          <p class="eyebrow">
+            文档详情
+          </p>
           <h2 id="document-detail-title">
             {{ detail?.document.title || '正在加载…' }}
           </h2>
@@ -362,24 +390,19 @@ watch(
       </div>
       <template v-else-if="detail">
         <div class="detail-meta">
-          <span
-            >状态：{{
-              detail.document.status === 'active'
-                ? '启用'
-                : detail.document.status === 'disabled'
-                  ? '停用'
-                  : '已删除'
-            }}</span
-          ><span>版本数：{{ detail.versions.length }}</span>
+          <span>状态：{{
+            detail.document.status === 'active'
+              ? '启用'
+              : detail.document.status === 'disabled'
+                ? '停用'
+                : '已删除'
+          }}</span><span>版本数：{{ detail.versions.length }}</span>
         </div>
         <div class="version-list">
           <div v-for="version in detail.versions" :key="version.id" class="version-row">
             <div>
-              <strong>V{{ version.version_no }}</strong
-              ><small
-                >{{ formatDate(version.created_at) }} ·
-                {{ version.file_size.toLocaleString() }} bytes</small
-              >
+              <strong>V{{ version.version_no }}</strong><small>{{ formatDate(version.created_at) }} ·
+                {{ version.file_size.toLocaleString() }} bytes</small>
             </div>
             <span class="status-pill" :class="version.parse_status">{{
               parseStatusLabel(version.parse_status)
@@ -409,9 +432,7 @@ watch(
               :data-chunk-id="chunk.id"
             >
               <div class="chunk-item-meta">
-                <span>#{{ chunk.ordinal + 1 }}</span
-                ><span v-if="chunk.section_path.length">{{ chunk.section_path.join(' / ') }}</span
-                ><code>{{
+                <span>#{{ chunk.ordinal + 1 }}</span><span v-if="chunk.section_path.length">{{ chunk.section_path.join(' / ') }}</span><code>{{
                   Object.entries(chunk.locator)
                     .map(([key, value]) => `${key} ${value}`)
                     .join(' · ')

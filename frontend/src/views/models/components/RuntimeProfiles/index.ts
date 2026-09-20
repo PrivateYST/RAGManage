@@ -3,7 +3,7 @@ import { computed, reactive, watch } from 'vue'
 
 export function useRuntimeProfileForm(endpoints: () => ModelEndpoint[]) {
   const generationEndpoints = computed(() =>
-    endpoints().filter((item) => item.endpoint_type === 'generation' && item.status === 'active'),
+    endpoints().filter(item => item.endpoint_type === 'generation' && item.status === 'active'),
   )
   const form = reactive({
     embeddingProfileId: '',
@@ -17,7 +17,7 @@ export function useRuntimeProfileForm(endpoints: () => ModelEndpoint[]) {
   watch(
     generationEndpoints,
     (items) => {
-      if (!items.some((item) => item.id === form.generationEndpointId))
+      if (!items.some(item => item.id === form.generationEndpointId))
         form.generationEndpointId = items[0]?.id ?? ''
     },
     { immediate: true },
@@ -25,7 +25,7 @@ export function useRuntimeProfileForm(endpoints: () => ModelEndpoint[]) {
   watch(
     () => form.generationEndpointId,
     (id) => {
-      const endpoint = generationEndpoints.value.find((item) => item.id === id)
+      const endpoint = generationEndpoints.value.find(item => item.id === id)
       form.generationModel = endpoint?.allowed_models[0] ?? ''
     },
     { immediate: true },

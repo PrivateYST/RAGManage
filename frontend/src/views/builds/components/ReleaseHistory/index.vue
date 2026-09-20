@@ -16,30 +16,27 @@ const { formatDate, shortHash, providerLabel } = useReleaseHistory(props)
       <span v-if="selectedKnowledgeBaseName">{{ selectedKnowledgeBaseName }}</span>
       <span v-else>选择具体知识库后查看</span>
     </header>
-    <div v-if="loading" class="release-history-empty">正在加载发布历史…</div>
+    <div v-if="loading" class="release-history-empty">
+      正在加载发布历史…
+    </div>
     <div v-else-if="!selectedKnowledgeBaseName" class="release-history-empty">
       请先在上方筛选一个知识库。
     </div>
-    <div v-else-if="!releases.length" class="release-history-empty">当前知识库还没有 Release。</div>
+    <div v-else-if="!releases.length" class="release-history-empty">
+      当前知识库还没有 Release。
+    </div>
     <div v-else class="release-history-list">
       <article v-for="release in releases" :key="release.id" :class="{ active: release.is_active }">
-        <span class="release-history-status"
-          ><Radio v-if="release.is_active" :size="13" aria-hidden="true"
-        /></span>
+        <span class="release-history-status"><Radio v-if="release.is_active" :size="13" aria-hidden="true" /></span>
         <div>
-          <strong>Release #{{ release.id }}</strong
-          ><small>构建 #{{ release.build_id }} · {{ release.document_count }} 份文档</small>
+          <strong>Release #{{ release.id }}</strong><small>构建 #{{ release.build_id }} · {{ release.document_count }} 份文档</small>
         </div>
         <div>
-          <strong>{{ providerLabel(release.provider) }}</strong
-          ><small
-            >Profile #{{ release.embedding_profile_id }} ·
-            {{ shortHash(release.embedding_definition_hash) }}</small
-          >
+          <strong>{{ providerLabel(release.provider) }}</strong><small>Profile #{{ release.embedding_profile_id }} ·
+            {{ shortHash(release.embedding_definition_hash) }}</small>
         </div>
         <div>
-          <strong>{{ release.model_name }}</strong
-          ><small>{{ release.dimension }} 维 · {{ shortHash(release.model_revision) }}</small>
+          <strong>{{ release.model_name }}</strong><small>{{ release.dimension }} 维 · {{ shortHash(release.model_revision) }}</small>
         </div>
         <time>{{ formatDate(release.created_at) }}</time>
         <span class="status-pill" :class="release.is_active ? 'ready' : 'retired'">{{

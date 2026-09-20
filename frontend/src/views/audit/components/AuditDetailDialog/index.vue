@@ -21,7 +21,9 @@ defineEmits<{ close: [] }>()
     >
       <header class="dialog-heading">
         <div>
-          <p class="eyebrow">审计事件 #{{ item.id }}</p>
+          <p class="eyebrow">
+            审计事件 #{{ item.id }}
+          </p>
           <h2 id="audit-detail-title">
             {{ auditActionLabel(item.action) }}
           </h2>

@@ -1,3 +1,4 @@
+import type { AddKnowledgeBaseGrantInput, AddSpaceMemberInput, MemberView } from './type'
 import type { KnowledgeBaseRow } from '@/api/admin'
 import type {
   KnowledgeBaseMember,
@@ -7,7 +8,6 @@ import type {
   SpaceMember,
   SpaceRoleCode,
 } from '@/api/members'
-import type { AddKnowledgeBaseGrantInput, AddSpaceMemberInput, MemberView } from './type'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { fetchKnowledgeBases } from '@/api/admin'
 import {
@@ -40,12 +40,12 @@ export function useMembersPage() {
 
   const canManageSpace = computed(() => auth.activeSpace?.role === 'space_admin')
   const activeMembers = computed(() =>
-    spaceMembers.value.filter((item) => item.status === 'active'),
+    spaceMembers.value.filter(item => item.status === 'active'),
   )
   const stats = computed(() => ({
     active: activeMembers.value.length,
-    admins: activeMembers.value.filter((item) => item.role_code === 'space_admin').length,
-    customers: activeMembers.value.filter((item) => item.role_code === 'customer_reader').length,
+    admins: activeMembers.value.filter(item => item.role_code === 'space_admin').length,
+    customers: activeMembers.value.filter(item => item.role_code === 'customer_reader').length,
     grants: activeMembers.value.reduce((total, item) => total + item.knowledge_base_count, 0),
   }))
 
@@ -78,17 +78,20 @@ export function useMembersPage() {
         canManageSpace.value ? fetchMembershipAudit(spaceId) : null,
       ]
       const [knowledgeBaseResult, memberResult, auditResult] = await Promise.all(
-        requests.map((item) => item ?? Promise.resolve({ items: [] })),
+        requests.map(item => item ?? Promise.resolve({ items: [] })),
       )
       knowledgeBases.value = knowledgeBaseResult.items as KnowledgeBaseRow[]
       spaceMembers.value = memberResult.items as SpaceMember[]
       auditItems.value = auditResult.items as MembershipAuditItem[]
-      if (!knowledgeBases.value.some((item) => item.id === selectedKnowledgeBaseId.value))
+      if (!knowledgeBases.value.some(item => item.id === selectedKnowledgeBaseId.value))
         selectedKnowledgeBaseId.value = knowledgeBases.value[0]?.id ?? ''
-      if (!canManageSpace.value) view.value = 'knowledge'
-    } catch (cause) {
+      if (!canManageSpace.value)
+        view.value = 'knowledge'
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '成员信息加载失败'
-    } finally {
+    }
+    finally {
       loading.value = false
     }
   }
@@ -96,7 +99,8 @@ export function useMembersPage() {
   async function loadKnowledgeBaseAccess(): Promise<void> {
     knowledgeBaseMembers.value = []
     candidates.value = []
-    if (!selectedKnowledgeBaseId.value) return
+    if (!selectedKnowledgeBaseId.value)
+      return
     grantLoading.value = true
     try {
       const [membersResult, candidatesResult] = await Promise.all([
@@ -105,27 +109,32 @@ export function useMembersPage() {
       ])
       knowledgeBaseMembers.value = membersResult.items
       candidates.value = candidatesResult.items
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '知识库授权加载失败'
-    } finally {
+    }
+    finally {
       grantLoading.value = false
     }
   }
 
   async function refreshAudit(): Promise<void> {
-    if (!auth.activeSpaceId || !canManageSpace.value) return
+    if (!auth.activeSpaceId || !canManageSpace.value)
+      return
     auditItems.value = (await fetchMembershipAudit(auth.activeSpaceId)).items
   }
 
   async function submitSpaceMember(input: AddSpaceMemberInput): Promise<boolean> {
-    if (!auth.activeSpaceId) return false
+    if (!auth.activeSpaceId)
+      return false
     clearNotice()
     try {
       await addSpaceMember(auth.activeSpaceId, { login: input.login, role_code: input.roleCode })
       success.value = '成员已加入当前空间'
       await Promise.all([loadSpaceMembers(), refreshAudit()])
       return true
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '添加成员失败'
       return false
     }
@@ -137,22 +146,26 @@ export function useMembersPage() {
   }
 
   async function changeSpaceRole(member: SpaceMember, roleCode: SpaceRoleCode): Promise<void> {
-    if (!auth.activeSpaceId || member.role_code === roleCode) return
+    if (!auth.activeSpaceId || member.role_code === roleCode)
+      return
     clearNotice()
     busyId.value = `space-${member.id}`
     try {
       await updateSpaceMember(auth.activeSpaceId, member.id, { role_code: roleCode })
       success.value = '空间角色已更新'
       await Promise.all([loadSpaceMembers(), refreshAudit()])
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '空间角色更新失败'
-    } finally {
+    }
+    finally {
       busyId.value = ''
     }
   }
 
   async function toggleSpaceStatus(member: SpaceMember): Promise<void> {
-    if (!auth.activeSpaceId) return
+    if (!auth.activeSpaceId)
+      return
     clearNotice()
     busyId.value = `space-${member.id}`
     try {
@@ -160,25 +173,29 @@ export function useMembersPage() {
       await updateSpaceMember(auth.activeSpaceId, member.id, { status })
       success.value = status === 'active' ? '成员已恢复' : '成员已停用'
       await Promise.all([loadSpaceMembers(), refreshAudit()])
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '成员状态更新失败'
-    } finally {
+    }
+    finally {
       busyId.value = ''
     }
   }
 
   async function submitKnowledgeBaseGrant(input: AddKnowledgeBaseGrantInput): Promise<void> {
-    if (!selectedKnowledgeBaseId.value) return
+    if (!selectedKnowledgeBaseId.value)
+      return
     clearNotice()
     busyId.value = `grant-${input.userId}`
     try {
-      const candidate = candidates.value.find((item) => item.id === input.userId)
+      const candidate = candidates.value.find(item => item.id === input.userId)
       if (candidate?.grant_status) {
         await updateKnowledgeBaseMember(selectedKnowledgeBaseId.value, input.userId, {
           role_code: input.roleCode,
           status: 'active',
         })
-      } else {
+      }
+      else {
         await addKnowledgeBaseMember(selectedKnowledgeBaseId.value, {
           user_id: Number(input.userId),
           role_code: input.roleCode,
@@ -186,9 +203,11 @@ export function useMembersPage() {
       }
       success.value = candidate?.grant_status ? '知识库授权已恢复' : '知识库授权已添加'
       await Promise.all([loadKnowledgeBaseAccess(), refreshAudit(), loadSpaceMembers()])
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '知识库授权失败'
-    } finally {
+    }
+    finally {
       busyId.value = ''
     }
   }
@@ -197,7 +216,8 @@ export function useMembersPage() {
     member: KnowledgeBaseMember,
     roleCode: KnowledgeBaseRoleCode,
   ): Promise<void> {
-    if (!selectedKnowledgeBaseId.value || member.role_code === roleCode) return
+    if (!selectedKnowledgeBaseId.value || member.role_code === roleCode)
+      return
     clearNotice()
     busyId.value = `grant-${member.id}`
     try {
@@ -206,15 +226,18 @@ export function useMembersPage() {
       })
       success.value = '知识库角色已更新'
       await Promise.all([loadKnowledgeBaseAccess(), refreshAudit()])
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '知识库角色更新失败'
-    } finally {
+    }
+    finally {
       busyId.value = ''
     }
   }
 
   async function toggleKnowledgeBaseStatus(member: KnowledgeBaseMember): Promise<void> {
-    if (!selectedKnowledgeBaseId.value) return
+    if (!selectedKnowledgeBaseId.value)
+      return
     clearNotice()
     busyId.value = `grant-${member.id}`
     try {
@@ -222,9 +245,11 @@ export function useMembersPage() {
       await updateKnowledgeBaseMember(selectedKnowledgeBaseId.value, member.id, { status })
       success.value = status === 'active' ? '知识库授权已恢复' : '知识库授权已撤销'
       await Promise.all([loadKnowledgeBaseAccess(), refreshAudit(), loadSpaceMembers()])
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '知识库授权状态更新失败'
-    } finally {
+    }
+    finally {
       busyId.value = ''
     }
   }

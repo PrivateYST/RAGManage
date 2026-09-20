@@ -89,7 +89,7 @@ export interface SseMessage {
 export function consumeSseChunk(
   buffer: string,
   chunk: string,
-): { events: SseMessage[]; rest: string } {
+): { events: SseMessage[], rest: string } {
   const combined = buffer + chunk
   const blocks = combined.split(SSE_BLOCK_SEPARATOR)
   const rest = blocks.pop() ?? ''
@@ -98,10 +98,13 @@ export function consumeSseChunk(
     let event = 'message'
     const dataLines: string[] = []
     for (const line of block.split(SSE_LINE_SEPARATOR)) {
-      if (line.startsWith('event:')) event = line.slice(6).trim()
-      if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart())
+      if (line.startsWith('event:'))
+        event = line.slice(6).trim()
+      if (line.startsWith('data:'))
+        dataLines.push(line.slice(5).trimStart())
     }
-    if (!dataLines.length) continue
+    if (!dataLines.length)
+      continue
     events.push({ event, data: JSON.parse(dataLines.join('\n')) as Record<string, unknown> })
   }
   return { events, rest }
@@ -170,13 +173,15 @@ export async function streamRun(
     headers: { Accept: 'text/event-stream' },
     signal,
   })
-  if (!response.ok || !response.body) throw new Error(`流式请求失败（${response.status}）`)
+  if (!response.ok || !response.body)
+    throw new Error(`流式请求失败（${response.status}）`)
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
   while (true) {
     const { value, done } = await reader.read()
-    if (done) break
+    if (done)
+      break
     const parsed = consumeSseChunk(buffer, decoder.decode(value, { stream: true }))
     buffer = parsed.rest
     parsed.events.forEach(onEvent)

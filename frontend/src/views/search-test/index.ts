@@ -18,13 +18,13 @@ export function useSearchTest() {
   const result = shallowRef<SearchTestResult | null>(null)
 
   const selectedKnowledgeBase = computed(
-    () => knowledgeBases.value.find((item) => item.id === knowledgeBaseId.value) ?? null,
+    () => knowledgeBases.value.find(item => item.id === knowledgeBaseId.value) ?? null,
   )
   const canSearch = computed(
     () =>
-      Boolean(selectedKnowledgeBase.value?.active_release_id && query.value.trim()) &&
-      !loadingKnowledgeBases.value &&
-      !searching.value,
+      Boolean(selectedKnowledgeBase.value?.active_release_id && query.value.trim())
+      && !loadingKnowledgeBases.value
+      && !searching.value,
   )
 
   async function loadKnowledgeBases(): Promise<void> {
@@ -38,22 +38,25 @@ export function useSearchTest() {
         return
       }
       knowledgeBases.value = (await fetchKnowledgeBases(auth.activeSpaceId)).items
-      if (!knowledgeBases.value.some((item) => item.id === knowledgeBaseId.value)) {
-        knowledgeBaseId.value =
-          knowledgeBases.value.find((item) => item.active_release_id)?.id ??
-          knowledgeBases.value[0]?.id ??
-          ''
+      if (!knowledgeBases.value.some(item => item.id === knowledgeBaseId.value)) {
+        knowledgeBaseId.value
+          = knowledgeBases.value.find(item => item.active_release_id)?.id
+            ?? knowledgeBases.value[0]?.id
+            ?? ''
       }
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '知识库加载失败'
-    } finally {
+    }
+    finally {
       loadingKnowledgeBases.value = false
     }
   }
 
   async function search(): Promise<void> {
     const trimmedQuery = query.value.trim()
-    if (!knowledgeBaseId.value || !trimmedQuery || searching.value) return
+    if (!knowledgeBaseId.value || !trimmedQuery || searching.value)
+      return
     searching.value = true
     error.value = ''
     result.value = null
@@ -64,9 +67,11 @@ export function useSearchTest() {
         top_k: topK.value,
         context_max_chars: contextMaxChars.value,
       })
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '检索运行失败'
-    } finally {
+    }
+    finally {
       searching.value = false
     }
   }

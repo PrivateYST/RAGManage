@@ -61,9 +61,13 @@ const {
   <section class="page-section builds-page">
     <div class="page-intro">
       <div>
-        <p class="eyebrow">索引生命周期</p>
+        <p class="eyebrow">
+          索引生命周期
+        </p>
         <h1>构建与发布</h1>
-        <p class="page-description">冻结当前文档版本与处理配置，生成可校验、可发布的知识库索引。</p>
+        <p class="page-description">
+          冻结当前文档版本与处理配置，生成可校验、可发布的知识库索引。
+        </p>
       </div>
       <div class="build-page-actions">
         <button class="secondary-button" type="button" :disabled="loading" @click="loadData()">
@@ -108,7 +112,9 @@ const {
       <p v-if="selectedKnowledgeBase">
         当前筛选“{{ selectedKnowledgeBase.name }}”；创建构建时将默认选择该知识库。
       </p>
-      <p v-else>当前显示全部知识库的构建记录；点击“创建构建”可选择目标知识库。</p>
+      <p v-else>
+        当前显示全部知识库的构建记录；点击“创建构建”可选择目标知识库。
+      </p>
     </div>
 
     <div class="build-metrics">
@@ -158,27 +164,20 @@ const {
               </div>
             </td>
             <td>
-              <span v-if="build.is_active_release" class="status-pill ready"
-                >当前 Release #{{ build.release_id }}</span
-              >
-              <span v-else-if="build.release_id" class="status-pill retired"
-                >历史 Release #{{ build.release_id }}</span
-              >
+              <span v-if="build.is_active_release" class="status-pill ready">当前 Release #{{ build.release_id }}</span>
+              <span v-else-if="build.release_id" class="status-pill retired">历史 Release #{{ build.release_id }}</span>
               <span v-else class="status-pill draft">未发布</span>
             </td>
             <td>
               <div class="build-context-cell">
-                <strong>{{ build.knowledge_base_name }}</strong
-                ><small>Epoch {{ build.input_epoch }}</small>
+                <strong>{{ build.knowledge_base_name }}</strong><small>Epoch {{ build.input_epoch }}</small>
               </div>
             </td>
             <td>
               <span class="status-pill" :class="build.state">{{
                 buildStateLabel(build.state)
               }}</span>
-              <small v-if="build.state !== 'failed'" class="build-count"
-                >{{ build.completed_documents }} / {{ build.document_count }} 份文档</small
-              >
+              <small v-if="build.state !== 'failed'" class="build-count">{{ build.completed_documents }} / {{ build.document_count }} 份文档</small>
               <small v-if="build.state === 'failed'" class="build-error">{{
                 errorCode(build)
               }}</small>
@@ -186,10 +185,8 @@ const {
             <td>
               <div class="build-progress">
                 <div><span :style="{ width: `${progress(build)}%` }" /></div>
-                <small
-                  >{{ build.embedded_count }} / {{ build.chunk_count }} ·
-                  {{ progress(build) }}%</small
-                >
+                <small>{{ build.embedded_count }} / {{ build.chunk_count }} ·
+                  {{ progress(build) }}%</small>
               </div>
             </td>
             <td>
@@ -197,14 +194,10 @@ const {
                 <Cpu :size="13" />
                 <span>{{ build.model_name }}</span>
                 <small>{{ build.dimension }} 维 · {{ shortRevision(build.model_revision) }}</small>
-                <small
-                  >Profile #{{ build.embedding_profile_id }} ·
-                  {{ providerLabel(build.provider) }}</small
-                >
-                <small
-                  >{{ shortEndpoint(build.base_url) }} ·
-                  {{ shortRevision(build.embedding_definition_hash) }}</small
-                >
+                <small>Profile #{{ build.embedding_profile_id }} ·
+                  {{ providerLabel(build.provider) }}</small>
+                <small>{{ shortEndpoint(build.base_url) }} ·
+                  {{ shortRevision(build.embedding_definition_hash) }}</small>
               </div>
             </td>
             <td>

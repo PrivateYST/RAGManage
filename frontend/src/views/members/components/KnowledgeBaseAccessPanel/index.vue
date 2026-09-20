@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import type { KnowledgeBaseRoleCode } from '@/api/members'
 import type { KnowledgeBaseAccessPanelEmits, KnowledgeBaseAccessPanelProps } from './type'
+import type { KnowledgeBaseRoleCode } from '@/api/members'
 import { KeyRound, Library, ShieldCheck } from '@/components'
 import { knowledgeBaseRoleOptions, useKnowledgeBaseAccessPanel } from './index'
 import './index.scss'
 
 const props = defineProps<KnowledgeBaseAccessPanelProps>()
 const emit = defineEmits<KnowledgeBaseAccessPanelEmits>()
-const { candidateId, roleCode, availableCandidates, selectedCandidate, submitGrant } =
-  useKnowledgeBaseAccessPanel(props, emit)
+const { candidateId, roleCode, availableCandidates, selectedCandidate, submitGrant }
+  = useKnowledgeBaseAccessPanel(props, emit)
 </script>
 
 <template>
@@ -17,8 +17,7 @@ const { candidateId, roleCode, availableCandidates, selectedCandidate, submitGra
       <div>
         <span class="kb-access-icon"><Library :size="16" /></span>
         <div>
-          <strong>知识库授权</strong
-          ><small>内部空间成员只有获得显式授权后才能访问对应知识库。</small>
+          <strong>知识库授权</strong><small>内部空间成员只有获得显式授权后才能访问对应知识库。</small>
         </div>
       </div>
       <label>
@@ -38,25 +37,19 @@ const { candidateId, roleCode, availableCandidates, selectedCandidate, submitGra
     </div>
 
     <form class="kb-grant-form" @submit.prevent="submitGrant">
-      <label
-        ><span>空间成员</span
-        ><select v-model="candidateId" required>
-          <option value="">选择待授权成员</option>
-          <option v-for="item in availableCandidates" :key="item.id" :value="item.id">
-            {{ item.display_name }}（{{ item.login }}）{{
-              item.grant_status === 'disabled' ? ' · 已撤销' : ''
-            }}
-          </option>
-        </select></label
-      >
-      <label
-        ><span>知识库角色</span
-        ><select v-model="roleCode">
-          <option v-for="[value, label] in knowledgeBaseRoleOptions" :key="value" :value="value">
-            {{ label }}
-          </option>
-        </select></label
-      >
+      <label><span>空间成员</span><select v-model="candidateId" required>
+        <option value="">选择待授权成员</option>
+        <option v-for="item in availableCandidates" :key="item.id" :value="item.id">
+          {{ item.display_name }}（{{ item.login }}）{{
+            item.grant_status === 'disabled' ? ' · 已撤销' : ''
+          }}
+        </option>
+      </select></label>
+      <label><span>知识库角色</span><select v-model="roleCode">
+        <option v-for="[value, label] in knowledgeBaseRoleOptions" :key="value" :value="value">
+          {{ label }}
+        </option>
+      </select></label>
       <button
         class="primary-button"
         type="submit"
@@ -75,8 +68,7 @@ const { candidateId, roleCode, availableCandidates, selectedCandidate, submitGra
       <Library :size="24" /><strong>暂无可管理知识库</strong>
     </div>
     <div v-else-if="members.length === 0" class="kb-access-state">
-      <ShieldCheck :size="24" /><strong>当前没有显式知识库授权</strong
-      ><span>空间管理员仍拥有管理权限，客户用户按空间读取已发布内容。</span>
+      <ShieldCheck :size="24" /><strong>当前没有显式知识库授权</strong><span>空间管理员仍拥有管理权限，客户用户按空间读取已发布内容。</span>
     </div>
     <div v-else class="kb-access-table-wrap">
       <table class="kb-access-table">
@@ -91,8 +83,7 @@ const { candidateId, roleCode, availableCandidates, selectedCandidate, submitGra
         <tbody>
           <tr v-for="member in members" :key="member.id">
             <td>
-              <strong>{{ member.display_name }}</strong
-              ><small>{{ member.login }}</small>
+              <strong>{{ member.display_name }}</strong><small>{{ member.login }}</small>
             </td>
             <td>
               <select
@@ -120,8 +111,7 @@ const { candidateId, roleCode, availableCandidates, selectedCandidate, submitGra
               <span
                 class="status-pill"
                 :class="member.status === 'active' ? 'ready' : 'disabled'"
-                >{{ member.status === 'active' ? '有效' : '已撤销' }}</span
-              >
+              >{{ member.status === 'active' ? '有效' : '已撤销' }}</span>
             </td>
             <td>
               <button

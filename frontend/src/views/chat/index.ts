@@ -42,10 +42,10 @@ export function useChatRun() {
   let streamController: AbortController | null = null
 
   const selectedKnowledgeBase = computed(
-    () => knowledgeBases.value.find((item) => item.id === knowledgeBaseId.value) ?? null,
+    () => knowledgeBases.value.find(item => item.id === knowledgeBaseId.value) ?? null,
   )
   const selectedConversation = computed(
-    () => conversations.value.find((item) => item.id === conversationId.value) ?? null,
+    () => conversations.value.find(item => item.id === conversationId.value) ?? null,
   )
   const canSend = computed(
     () => Boolean(knowledgeBaseId.value && question.value.trim()) && !sending.value,
@@ -60,13 +60,14 @@ export function useChatRun() {
     }
     try {
       knowledgeBases.value = (await fetchKnowledgeBases(auth.activeSpaceId)).items
-      if (!knowledgeBases.value.some((item) => item.id === knowledgeBaseId.value)) {
-        knowledgeBaseId.value =
-          knowledgeBases.value.find((item) => item.active_release_id)?.id ??
-          knowledgeBases.value[0]?.id ??
-          ''
+      if (!knowledgeBases.value.some(item => item.id === knowledgeBaseId.value)) {
+        knowledgeBaseId.value
+          = knowledgeBases.value.find(item => item.active_release_id)?.id
+            ?? knowledgeBases.value[0]?.id
+            ?? ''
       }
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '知识库加载失败'
     }
   }
@@ -84,12 +85,15 @@ export function useChatRun() {
     error.value = ''
     try {
       conversations.value = (await fetchConversations(knowledgeBaseId.value)).items
-      if (!conversations.value.some((item) => item.id === conversationId.value))
+      if (!conversations.value.some(item => item.id === conversationId.value))
         conversationId.value = conversations.value[0]?.id ?? ''
-      if (conversationId.value) await loadConversation(conversationId.value)
-    } catch (cause) {
+      if (conversationId.value)
+        await loadConversation(conversationId.value)
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '会话加载失败'
-    } finally {
+    }
+    finally {
       loading.value = false
     }
   }
@@ -102,27 +106,32 @@ export function useChatRun() {
     const detail = await fetchConversation(targetId)
     messages.value = detail.messages
     const activeMessage = messages.value.find(
-      (message) => message.run_id && ['pending', 'generating'].includes(message.state),
+      message => message.run_id && ['pending', 'generating'].includes(message.state),
     )
-    if (activeMessage && !sending.value) void resume(activeMessage)
+    if (activeMessage && !sending.value)
+      void resume(activeMessage)
   }
 
   async function selectConversation(targetId: string): Promise<void> {
-    if (sending.value || targetId === conversationId.value) return
+    if (sending.value || targetId === conversationId.value)
+      return
     conversationId.value = targetId
     loading.value = true
     error.value = ''
     try {
       await loadConversation(targetId)
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '会话加载失败'
-    } finally {
+    }
+    finally {
       loading.value = false
     }
   }
 
   async function newConversation(): Promise<ConversationRow | null> {
-    if (!knowledgeBaseId.value || sending.value) return null
+    if (!knowledgeBaseId.value || sending.value)
+      return null
     error.value = ''
     try {
       const conversation = await createConversation(knowledgeBaseId.value)
@@ -130,7 +139,8 @@ export function useChatRun() {
       conversationId.value = conversation.id
       messages.value = []
       return conversation
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '会话创建失败'
       return null
     }
@@ -139,15 +149,15 @@ export function useChatRun() {
   function applyStreamEvent(event: SseMessage, assistantMessageId: string): void {
     if (event.event === 'token') {
       const text = typeof event.data.text === 'string' ? event.data.text : ''
-      const message = messages.value.find((item) => item.id === assistantMessageId)
+      const message = messages.value.find(item => item.id === assistantMessageId)
       if (message) {
         message.content += text
         message.state = 'generating'
       }
     }
     if (event.event === 'error') {
-      error.value =
-        typeof event.data.message === 'string' ? event.data.message : '问答生成失败，可以重试。'
+      error.value
+        = typeof event.data.message === 'string' ? event.data.message : '问答生成失败，可以重试。'
     }
   }
 
@@ -157,14 +167,16 @@ export function useChatRun() {
     try {
       await streamRun(
         run.id,
-        (event) => applyStreamEvent(event, run.assistant_message_id),
+        event => applyStreamEvent(event, run.assistant_message_id),
         streamController.signal,
       )
-    } catch (cause) {
+    }
+    catch (cause) {
       if (!(cause instanceof DOMException && cause.name === 'AbortError'))
         error.value = cause instanceof Error ? cause.message : '流式连接已断开'
       currentRun.value = await fetchRun(run.id).catch(() => run)
-    } finally {
+    }
+    finally {
       streamController = null
       await loadConversation().catch(() => undefined)
       await refreshConversationList().catch(() => undefined)
@@ -173,19 +185,22 @@ export function useChatRun() {
   }
 
   async function refreshConversationList(): Promise<void> {
-    if (!knowledgeBaseId.value) return
+    if (!knowledgeBaseId.value)
+      return
     conversations.value = (await fetchConversations(knowledgeBaseId.value)).items
   }
 
   async function sendQuestion(): Promise<void> {
     const text = question.value.trim()
-    if (!text || sending.value) return
+    if (!text || sending.value)
+      return
     error.value = ''
     try {
       let targetConversationId = conversationId.value
       if (!targetConversationId) {
         const conversation = await newConversation()
-        if (!conversation) return
+        if (!conversation)
+          return
         targetConversationId = conversation.id
       }
       sending.value = true
@@ -193,7 +208,8 @@ export function useChatRun() {
       question.value = ''
       await loadConversation(targetConversationId)
       await followRun(run)
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '问题发送失败'
       sending.value = false
     }
@@ -201,10 +217,12 @@ export function useChatRun() {
 
   async function stopGeneration(): Promise<void> {
     const run = currentRun.value
-    if (!run || !['queued', 'running'].includes(run.state)) return
+    if (!run || !['queued', 'running'].includes(run.state))
+      return
     try {
       currentRun.value = await cancelRun(run.id)
-    } finally {
+    }
+    finally {
       streamController?.abort()
       await loadConversation().catch(() => undefined)
       sending.value = false
@@ -212,28 +230,33 @@ export function useChatRun() {
   }
 
   async function retry(message: ChatMessageRow): Promise<void> {
-    if (!message.run_id || sending.value) return
+    if (!message.run_id || sending.value)
+      return
     sending.value = true
     error.value = ''
     try {
       const run = await retryRun(message.run_id, requestId())
       await loadConversation()
       await followRun(run)
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '重新生成失败'
       sending.value = false
     }
   }
 
   async function resume(message: ChatMessageRow): Promise<void> {
-    if (!message.run_id || sending.value) return
+    if (!message.run_id || sending.value)
+      return
     sending.value = true
     error.value = ''
     try {
       const run = await fetchRun(message.run_id)
-      if (['queued', 'running'].includes(run.state)) await followRun(run)
+      if (['queued', 'running'].includes(run.state))
+        await followRun(run)
       else await loadConversation()
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '运行状态恢复失败'
       sending.value = false
     }

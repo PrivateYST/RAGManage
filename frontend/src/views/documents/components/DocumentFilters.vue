@@ -24,7 +24,7 @@ const emit = defineEmits<{
         placeholder="搜索文档名称"
         type="search"
         @input="emit('update:query', ($event.target as HTMLInputElement).value)"
-      />
+      >
     </label>
     <label class="document-status-filter">
       <SlidersHorizontal :size="14" aria-hidden="true" />

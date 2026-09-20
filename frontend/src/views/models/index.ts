@@ -1,6 +1,6 @@
+import type { EndpointSubmitPayload, ModelPageView } from './type'
 import type { KnowledgeBaseRow } from '@/api/admin'
 import type { HealthCheckResult, ModelEndpoint, ProfileCollection } from '@/api/models'
-import type { EndpointSubmitPayload, ModelPageView } from './type'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { fetchKnowledgeBases } from '@/api/admin'
 import {
@@ -29,10 +29,10 @@ export function useModelsPage() {
   const knowledgeBases = ref<KnowledgeBaseRow[]>([])
   const selectedKnowledgeBaseId = shallowRef('')
   const profiles = ref<ProfileCollection | null>(null)
-  const lastHealthResult = ref<{ endpoint: ModelEndpoint; result: HealthCheckResult } | null>(null)
+  const lastHealthResult = ref<{ endpoint: ModelEndpoint, result: HealthCheckResult } | null>(null)
 
   const canManageEndpoints = computed(() => auth.user?.platform_role === 'platform_admin')
-  const activeEndpoints = computed(() => endpoints.value.filter((item) => item.status === 'active'))
+  const activeEndpoints = computed(() => endpoints.value.filter(item => item.status === 'active'))
 
   function clearNotice(): void {
     error.value = ''
@@ -52,22 +52,27 @@ export function useModelsPage() {
       const [kbResult, endpointResult] = await Promise.all([kbPromise, endpointPromise])
       knowledgeBases.value = kbResult.items
       endpoints.value = endpointResult.items
-      if (!knowledgeBases.value.some((item) => item.id === selectedKnowledgeBaseId.value))
+      if (!knowledgeBases.value.some(item => item.id === selectedKnowledgeBaseId.value))
         selectedKnowledgeBaseId.value = knowledgeBases.value[0]?.id ?? ''
-      if (!canManageEndpoints.value) view.value = 'profiles'
-    } catch (cause) {
+      if (!canManageEndpoints.value)
+        view.value = 'profiles'
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '模型配置加载失败'
-    } finally {
+    }
+    finally {
       loading.value = false
     }
   }
 
   async function loadProfiles(): Promise<void> {
     profiles.value = null
-    if (!selectedKnowledgeBaseId.value) return
+    if (!selectedKnowledgeBaseId.value)
+      return
     try {
       profiles.value = await fetchProfiles(selectedKnowledgeBaseId.value)
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : 'Profile 加载失败'
     }
   }
@@ -92,14 +97,16 @@ export function useModelsPage() {
           allowed_models: payload.allowed_models,
         })
         success.value = '模型端点已更新，健康状态已重置'
-      } else {
+      }
+      else {
         await createModelEndpoint(payload)
         success.value = '模型端点已登记，请执行真实健康检查'
       }
       endpointDialogOpen.value = false
       endpoints.value = (await fetchModelEndpoints()).items
       return true
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '模型端点保存失败'
       return false
     }
@@ -113,9 +120,11 @@ export function useModelsPage() {
       await updateModelEndpoint(endpoint.id, { status })
       success.value = status === 'active' ? '模型端点已启用' : '模型端点已停用'
       endpoints.value = (await fetchModelEndpoints()).items
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '端点状态更新失败'
-    } finally {
+    }
+    finally {
       busyId.value = ''
     }
   }
@@ -126,12 +135,14 @@ export function useModelsPage() {
     try {
       const result = await checkModelEndpoint(endpoint.id, modelName)
       lastHealthResult.value = { endpoint, result }
-      success.value =
-        result.status === 'healthy' ? '真实模型调用成功' : (result.error ?? '模型检查失败')
+      success.value
+        = result.status === 'healthy' ? '真实模型调用成功' : (result.error ?? '模型检查失败')
       endpoints.value = (await fetchModelEndpoints()).items
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '模型健康检查失败'
-    } finally {
+    }
+    finally {
       busyId.value = ''
     }
   }
@@ -140,7 +151,8 @@ export function useModelsPage() {
     max_chars: number
     overlap_chars: number
   }): Promise<void> {
-    if (!selectedKnowledgeBaseId.value) return
+    if (!selectedKnowledgeBaseId.value)
+      return
     clearNotice()
     try {
       await createIngestionProfile({
@@ -151,7 +163,8 @@ export function useModelsPage() {
       })
       success.value = '切片 Profile 已创建，新上传或重新解析时使用'
       await loadProfiles()
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '切片 Profile 创建失败'
     }
   }
@@ -173,7 +186,8 @@ export function useModelsPage() {
       })
       success.value = '嵌入 Profile 已通过真实维度检查并创建'
       await loadProfiles()
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '嵌入 Profile 创建失败'
     }
   }
@@ -187,7 +201,8 @@ export function useModelsPage() {
     temperature: number
     answerRules: string
   }): Promise<void> {
-    if (!selectedKnowledgeBaseId.value) return
+    if (!selectedKnowledgeBaseId.value)
+      return
     clearNotice()
     try {
       await createRuntimeProfile({
@@ -202,7 +217,8 @@ export function useModelsPage() {
       })
       success.value = 'Runtime Profile 已创建，激活后进入运行链路'
       await loadProfiles()
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : 'Runtime Profile 创建失败'
     }
   }
@@ -212,14 +228,16 @@ export function useModelsPage() {
     busyId.value = `runtime-${id}`
     try {
       const result = await activateRuntimeProfile(id)
-      success.value =
-        result.effect_scope === 'rebuild_required'
+      success.value
+        = result.effect_scope === 'rebuild_required'
           ? 'Runtime Profile 已激活；嵌入模型发生变化，请重新构建并发布'
           : 'Runtime Profile 已激活并立即生效'
       await loadProfiles()
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : 'Runtime Profile 激活失败'
-    } finally {
+    }
+    finally {
       busyId.value = ''
     }
   }

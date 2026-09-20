@@ -63,7 +63,7 @@ describe('runtime profiles', () => {
     })
 
     expect(wrapper.text()).toContain('换嵌入需重建')
-    const activate = wrapper.findAll('button').find((button) => button.text().includes('激活'))
+    const activate = wrapper.findAll('button').find(button => button.text().includes('激活'))
     await activate?.trigger('click')
     expect(wrapper.emitted('activate')?.[0]).toEqual(['21'])
   })

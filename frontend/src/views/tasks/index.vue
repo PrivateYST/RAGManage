@@ -18,14 +18,14 @@ const busyTaskId = shallowRef<string | null>(null)
 
 const visibleTasks = computed(() =>
   tasks.value.filter((task) => {
-    const matchesKnowledgeBase =
-      knowledgeBaseId.value === 'all' || task.knowledge_base_id === knowledgeBaseId.value
+    const matchesKnowledgeBase
+      = knowledgeBaseId.value === 'all' || task.knowledge_base_id === knowledgeBaseId.value
     const matchesState = stateFilter.value === 'all' || task.state === stateFilter.value
     return matchesKnowledgeBase && matchesState
   }),
 )
 const knowledgeBaseNames = computed(
-  () => new Map(knowledgeBases.value.map((item) => [item.id, item.name])),
+  () => new Map(knowledgeBases.value.map(item => [item.id, item.name])),
 )
 
 const stateLabels: Record<string, string> = {
@@ -43,8 +43,8 @@ function stateLabel(value: string): string {
 
 function taskLabel(value: string): string {
   return (
-    { document_parse: '文档解析', document_embed: '文档嵌入', index_build: '索引构建' }[value] ??
-    value
+    { document_parse: '文档解析', document_embed: '文档嵌入', index_build: '索引构建' }[value]
+    ?? value
   )
 }
 
@@ -53,7 +53,8 @@ function formatDate(value: string): string {
 }
 
 function progress(task: TaskRow): string {
-  if (!task.item_count) return task.state === 'completed' ? '已完成' : '—'
+  if (!task.item_count)
+    return task.state === 'completed' ? '已完成' : '—'
   return `${task.completed_items} / ${task.item_count}`
 }
 
@@ -72,9 +73,11 @@ async function loadData(): Promise<void> {
     ])
     knowledgeBases.value = kbResponse.items
     tasks.value = taskResponse.items
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '任务加载失败'
-  } finally {
+  }
+  finally {
     loading.value = false
   }
 }
@@ -85,9 +88,11 @@ async function handleRetry(task: TaskRow): Promise<void> {
   try {
     await retryTask(task.id)
     await loadData()
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '任务重试失败'
-  } finally {
+  }
+  finally {
     busyTaskId.value = null
   }
 }
@@ -98,9 +103,11 @@ async function handleCancel(task: TaskRow): Promise<void> {
   try {
     await cancelTask(task.id)
     await loadData()
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '任务取消失败'
-  } finally {
+  }
+  finally {
     busyTaskId.value = null
   }
 }
@@ -115,7 +122,8 @@ watch(
 )
 
 watch(knowledgeBaseId, async (value, previousValue) => {
-  if (value === previousValue || !auth.activeSpaceId) return
+  if (value === previousValue || !auth.activeSpaceId)
+    return
   loading.value = true
   error.value = ''
   try {
@@ -125,9 +133,11 @@ watch(knowledgeBaseId, async (value, previousValue) => {
         ...(value === 'all' ? {} : { knowledgeBaseId: value }),
       })
     ).items
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '任务加载失败'
-  } finally {
+  }
+  finally {
     loading.value = false
   }
 })
@@ -137,9 +147,13 @@ watch(knowledgeBaseId, async (value, previousValue) => {
   <section class="page-section tasks-page">
     <div class="page-intro">
       <div>
-        <p class="eyebrow">后台处理</p>
+        <p class="eyebrow">
+          后台处理
+        </p>
         <h1>任务中心</h1>
-        <p class="page-description">查看文档解析、切片和后续构建任务的执行状态与失败信息。</p>
+        <p class="page-description">
+          查看文档解析、切片和后续构建任务的执行状态与失败信息。
+        </p>
       </div>
       <button class="secondary-button" type="button" :disabled="loading" @click="loadData">
         <RefreshCw :size="15" aria-hidden="true" />刷新
@@ -149,28 +163,24 @@ watch(knowledgeBaseId, async (value, previousValue) => {
       {{ error }}
     </div>
     <div class="content-card task-filter-card">
-      <label
-        >知识库<select v-model="knowledgeBaseId">
-          <option value="all">全部知识库</option>
-          <option
-            v-for="knowledgeBase in knowledgeBases"
-            :key="knowledgeBase.id"
-            :value="knowledgeBase.id"
-          >
-            {{ knowledgeBase.name }}
-          </option>
-        </select></label
-      >
-      <label
-        >状态<select v-model="stateFilter">
-          <option value="all">全部状态</option>
-          <option value="queued">排队中</option>
-          <option value="running">处理中</option>
-          <option value="completed">已完成</option>
-          <option value="failed">失败</option>
-          <option value="cancelled">已取消</option>
-        </select></label
-      >
+      <label>知识库<select v-model="knowledgeBaseId">
+        <option value="all">全部知识库</option>
+        <option
+          v-for="knowledgeBase in knowledgeBases"
+          :key="knowledgeBase.id"
+          :value="knowledgeBase.id"
+        >
+          {{ knowledgeBase.name }}
+        </option>
+      </select></label>
+      <label>状态<select v-model="stateFilter">
+        <option value="all">全部状态</option>
+        <option value="queued">排队中</option>
+        <option value="running">处理中</option>
+        <option value="completed">已完成</option>
+        <option value="failed">失败</option>
+        <option value="cancelled">已取消</option>
+      </select></label>
       <span class="table-count">共 {{ visibleTasks.length }} 个任务</span>
     </div>
     <div v-if="loading" class="content-card module-placeholder">
@@ -195,14 +205,12 @@ watch(knowledgeBaseId, async (value, previousValue) => {
           <tr v-for="task in visibleTasks" :key="task.id">
             <td>
               <div class="task-name">
-                <span class="task-type-icon" :class="task.state"
-                  ><CheckCircle2 v-if="task.state === 'completed'" :size="14" /><XCircle
-                    v-else-if="task.state === 'failed'"
-                    :size="14" /><Clock3 v-else :size="14"
-                /></span>
+                <span class="task-type-icon" :class="task.state"><CheckCircle2 v-if="task.state === 'completed'" :size="14" /><XCircle
+                  v-else-if="task.state === 'failed'"
+                  :size="14"
+                /><Clock3 v-else :size="14" /></span>
                 <div>
-                  <strong>{{ taskLabel(task.task_type) }}</strong
-                  ><small>#{{ task.id }}</small>
+                  <strong>{{ taskLabel(task.task_type) }}</strong><small>#{{ task.id }}</small>
                 </div>
               </div>
             </td>

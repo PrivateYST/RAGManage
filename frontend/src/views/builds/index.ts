@@ -1,6 +1,6 @@
+import type { BuildMetric } from './type'
 import type { KnowledgeBaseRow } from '@/api/admin'
 import type { BuildDetailResponse, BuildRow, ReleasePreview, ReleaseRow } from '@/api/builds'
-import type { BuildMetric } from './type'
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { fetchKnowledgeBases } from '@/api/admin'
 import {
@@ -45,22 +45,25 @@ export function useBuildsPage() {
 
   const visibleBuilds = computed(() => builds.value)
   const selectedKnowledgeBase = computed(
-    () => knowledgeBases.value.find((item) => item.id === knowledgeBaseId.value) ?? null,
+    () => knowledgeBases.value.find(item => item.id === knowledgeBaseId.value) ?? null,
   )
   const currentRelease = computed(
-    () => releases.value.find((release) => release.id === activeReleaseId.value) ?? null,
+    () => releases.value.find(release => release.id === activeReleaseId.value) ?? null,
   )
   const initialCreateKnowledgeBaseId = computed(
     () => selectedKnowledgeBase.value?.id ?? knowledgeBases.value[0]?.id ?? '',
   )
   const createDisabledReason = computed(() => {
-    if (loading.value) return '正在加载知识库'
-    if (!auth.activeSpaceId) return '请先选择工作空间'
-    if (!knowledgeBases.value.length) return '当前空间还没有可构建的知识库'
+    if (loading.value)
+      return '正在加载知识库'
+    if (!auth.activeSpaceId)
+      return '请先选择工作空间'
+    if (!knowledgeBases.value.length)
+      return '当前空间还没有可构建的知识库'
     return ''
   })
   const hasActiveBuild = computed(() =>
-    builds.value.some((build) => ['queued', 'running', 'validating'].includes(build.state)),
+    builds.value.some(build => ['queued', 'running', 'validating'].includes(build.state)),
   )
   const metrics = computed<BuildMetric[]>(() => [
     {
@@ -71,20 +74,20 @@ export function useBuildsPage() {
     },
     {
       label: '处理中',
-      value: builds.value.filter((item) => ['queued', 'running', 'validating'].includes(item.state))
+      value: builds.value.filter(item => ['queued', 'running', 'validating'].includes(item.state))
         .length,
       hint: '排队、嵌入或校验',
       tone: 'running',
     },
     {
       label: '构建完成',
-      value: builds.value.filter((item) => item.state === 'ready').length,
+      value: builds.value.filter(item => item.state === 'ready').length,
       hint: '可进入发布检查',
       tone: 'ready',
     },
     {
       label: '失败',
-      value: builds.value.filter((item) => item.state === 'failed').length,
+      value: builds.value.filter(item => item.state === 'failed').length,
       hint: '可在任务中心重试',
       tone: 'failed',
     },
@@ -99,7 +102,8 @@ export function useBuildsPage() {
   }
 
   function progress(build: BuildRow): number {
-    if (!build.chunk_count) return build.state === 'ready' ? 100 : 0
+    if (!build.chunk_count)
+      return build.state === 'ready' ? 100 : 0
     return Math.min(100, Math.round((build.embedded_count / build.chunk_count) * 100))
   }
 
@@ -120,13 +124,15 @@ export function useBuildsPage() {
     try {
       const url = new URL(value)
       return `${url.hostname}${url.port ? `:${url.port}` : ''}`
-    } catch {
+    }
+    catch {
       return value
     }
   }
 
   async function loadData(options: { silent?: boolean } = {}): Promise<void> {
-    if (!options.silent) loading.value = true
+    if (!options.silent)
+      loading.value = true
     error.value = ''
     try {
       if (!auth.activeSpaceId) {
@@ -136,8 +142,8 @@ export function useBuildsPage() {
         activeReleaseId.value = null
         return
       }
-      const releaseRequest =
-        knowledgeBaseId.value === 'all'
+      const releaseRequest
+        = knowledgeBaseId.value === 'all'
           ? Promise.resolve({ active_release_id: null, items: [] as ReleaseRow[] })
           : fetchReleases(knowledgeBaseId.value)
       const [knowledgeBaseResponse, buildResponse, releaseResponse] = await Promise.all([
@@ -153,41 +159,48 @@ export function useBuildsPage() {
       releases.value = releaseResponse.items
       activeReleaseId.value = releaseResponse.active_release_id
       if (
-        knowledgeBaseId.value !== 'all' &&
-        !knowledgeBases.value.some((item) => item.id === knowledgeBaseId.value)
+        knowledgeBaseId.value !== 'all'
+        && !knowledgeBases.value.some(item => item.id === knowledgeBaseId.value)
       ) {
         knowledgeBaseId.value = 'all'
       }
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '构建记录加载失败'
-    } finally {
+    }
+    finally {
       loading.value = false
     }
   }
 
   function openCreateDialog(): void {
-    if (createDisabledReason.value) return
+    if (createDisabledReason.value)
+      return
     createDialogOpen.value = true
   }
 
   function closeCreateDialog(): void {
-    if (!creating.value) createDialogOpen.value = false
+    if (!creating.value)
+      createDialogOpen.value = false
   }
 
   async function handleCreateBuild(targetKnowledgeBaseId: string): Promise<void> {
     const targetKnowledgeBase = knowledgeBases.value.find(
-      (item) => item.id === targetKnowledgeBaseId,
+      item => item.id === targetKnowledgeBaseId,
     )
-    if (!targetKnowledgeBase) return
+    if (!targetKnowledgeBase)
+      return
     creating.value = true
     error.value = ''
     try {
       await createBuild(targetKnowledgeBase.id)
       createDialogOpen.value = false
       await loadData()
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : '构建创建失败'
-    } finally {
+    }
+    finally {
       creating.value = false
     }
   }
@@ -199,16 +212,19 @@ export function useBuildsPage() {
     error.value = ''
     try {
       releasePreview.value = await fetchReleasePreview(build.id)
-    } catch (cause) {
+    }
+    catch (cause) {
       releaseDialogOpen.value = false
       error.value = cause instanceof Error ? cause.message : '发布预览加载失败'
-    } finally {
+    }
+    finally {
       previewingRelease.value = false
     }
   }
 
   function closeReleaseDialog(): void {
-    if (!publishingRelease.value) releaseDialogOpen.value = false
+    if (!publishingRelease.value)
+      releaseDialogOpen.value = false
   }
 
   async function openReleaseDetail(release: ReleaseRow): Promise<void> {
@@ -219,9 +235,11 @@ export function useBuildsPage() {
     loadingReleaseDetail.value = true
     try {
       releaseBuildDetail.value = await fetchBuildDetail(release.build_id)
-    } catch (cause) {
+    }
+    catch (cause) {
       releaseDetailError.value = cause instanceof Error ? cause.message : 'Release 详情加载失败'
-    } finally {
+    }
+    finally {
       loadingReleaseDetail.value = false
     }
   }
@@ -231,19 +249,22 @@ export function useBuildsPage() {
   }
 
   function openRollbackDialog(release: ReleaseRow): void {
-    if (!release.rollback_available || !currentRelease.value) return
+    if (!release.rollback_available || !currentRelease.value)
+      return
     rollbackTarget.value = release
     rollbackDialogOpen.value = true
   }
 
   function closeRollbackDialog(): void {
-    if (!rollingBack.value) rollbackDialogOpen.value = false
+    if (!rollingBack.value)
+      rollbackDialogOpen.value = false
   }
 
   async function handleRollbackRelease(): Promise<void> {
     const target = rollbackTarget.value
     const current = currentRelease.value
-    if (!target || !current || !target.rollback_available) return
+    if (!target || !current || !target.rollback_available)
+      return
     rollingBack.value = true
     error.value = ''
     notice.value = ''
@@ -252,9 +273,11 @@ export function useBuildsPage() {
       rollbackDialogOpen.value = false
       await loadData()
       notice.value = `已回退到 Release #${target.id}，新的问答请求将使用该版本。`
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : 'Release 回退失败'
-    } finally {
+    }
+    finally {
       rollingBack.value = false
     }
   }
@@ -262,7 +285,8 @@ export function useBuildsPage() {
   async function handlePublishRelease(): Promise<void> {
     const preview = releasePreview.value
     const buildId = preview?.build.id
-    if (!preview || !buildId || !preview.validation.ready) return
+    if (!preview || !buildId || !preview.validation.ready)
+      return
     publishingRelease.value = true
     error.value = ''
     notice.value = ''
@@ -271,17 +295,21 @@ export function useBuildsPage() {
       releaseDialogOpen.value = false
       await loadData()
       notice.value = `Release #${result.id} 发布成功，问答检索将使用该版本。`
-    } catch (cause) {
+    }
+    catch (cause) {
       error.value = cause instanceof Error ? cause.message : 'Release 发布失败'
-    } finally {
+    }
+    finally {
       publishingRelease.value = false
     }
   }
 
   function startPolling(): void {
-    if (pollTimer) clearInterval(pollTimer)
+    if (pollTimer)
+      clearInterval(pollTimer)
     pollTimer = setInterval(() => {
-      if (hasActiveBuild.value) void loadData({ silent: true })
+      if (hasActiveBuild.value)
+        void loadData({ silent: true })
     }, POLL_INTERVAL_MS)
   }
 
@@ -300,7 +328,8 @@ export function useBuildsPage() {
 
   startPolling()
   onUnmounted(() => {
-    if (pollTimer) clearInterval(pollTimer)
+    if (pollTimer)
+      clearInterval(pollTimer)
   })
 
   return {

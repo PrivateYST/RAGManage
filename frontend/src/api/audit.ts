@@ -37,11 +37,16 @@ export interface AuditLogFilters {
 /** 查询授权范围内的审计事件，并把可选筛选条件编码为 URL 参数。 */
 export function fetchAuditLogs(filters: AuditLogFilters): Promise<AuditLogPage> {
   const params = new URLSearchParams()
-  if (filters.tenantId) params.set('tenant_id', filters.tenantId)
-  if (filters.actionPrefix) params.set('action_prefix', filters.actionPrefix)
-  if (filters.actor) params.set('actor', filters.actor)
-  if (filters.targetType) params.set('target_type', filters.targetType)
-  if (filters.cursor) params.set('cursor', filters.cursor)
+  if (filters.tenantId)
+    params.set('tenant_id', filters.tenantId)
+  if (filters.actionPrefix)
+    params.set('action_prefix', filters.actionPrefix)
+  if (filters.actor)
+    params.set('actor', filters.actor)
+  if (filters.targetType)
+    params.set('target_type', filters.targetType)
+  if (filters.cursor)
+    params.set('cursor', filters.cursor)
   params.set('limit', String(filters.limit ?? 30))
   return apiRequest(`/api/v1/audit-logs?${params.toString()}`)
 }

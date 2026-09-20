@@ -18,7 +18,7 @@ const emit = defineEmits<{
 const openDocumentId = ref<string | null>(null)
 const menuStyle = ref<Record<string, string>>({})
 const openDocument = computed(
-  () => props.documents.find((document) => document.id === openDocumentId.value) ?? null,
+  () => props.documents.find(document => document.id === openDocumentId.value) ?? null,
 )
 
 function closeActionMenu(): void {
@@ -37,8 +37,8 @@ function toggleActionMenu(event: MouseEvent, document: DocumentRow): void {
   const menuHeight = 116
   const gap = 6
   const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8))
-  const top =
-    rect.bottom + gap + menuHeight <= window.innerHeight
+  const top
+    = rect.bottom + gap + menuHeight <= window.innerHeight
       ? rect.bottom + gap
       : Math.max(8, rect.top - gap - menuHeight)
 
@@ -54,14 +54,17 @@ function handleDocumentAction(
   document: DocumentRow,
 ): void {
   closeActionMenu()
-  if (action === 'preview') emit('preview', document)
-  else if (action === 'disable') emit('disable', document)
+  if (action === 'preview')
+    emit('preview', document)
+  else if (action === 'disable')
+    emit('disable', document)
   else emit('remove', document)
 }
 
 function handleOutsideClick(event: MouseEvent): void {
   const target = event.target as Node
-  if (!(target instanceof Element) || !target.closest('.row-actions')) closeActionMenu()
+  if (!(target instanceof Element) || !target.closest('.row-actions'))
+    closeActionMenu()
 }
 
 onMounted(() => {
@@ -88,9 +91,12 @@ function parseLabel(status: string | null): string {
 }
 
 function formatSize(size: number | null): string {
-  if (!size) return '—'
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  if (!size)
+    return '—'
+  if (size < 1024)
+    return `${size} B`
+  if (size < 1024 * 1024)
+    return `${(size / 1024).toFixed(1)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
@@ -117,10 +123,7 @@ function formatDate(value: string | null): string {
           <td>
             <button class="document-name-button" type="button" @click="emit('preview', document)">
               <span class="document-icon"><FileText :size="15" aria-hidden="true" /></span>
-              <span class="document-name-copy"
-                ><strong>{{ document.title }}</strong
-                ><small>{{ document.mime_type || '未知类型' }}</small></span
-              >
+              <span class="document-name-copy"><strong>{{ document.title }}</strong><small>{{ document.mime_type || '未知类型' }}</small></span>
             </button>
           </td>
           <td>

@@ -40,7 +40,8 @@ const latestMessageContent = computed(() => messages.value.at(-1)?.content ?? ''
 
 watch([() => messages.value.length, latestMessageContent], async () => {
   await nextTick()
-  if (messageViewport.value) messageViewport.value.scrollTop = messageViewport.value.scrollHeight
+  if (messageViewport.value)
+    messageViewport.value.scrollTop = messageViewport.value.scrollHeight
 })
 </script>
 
@@ -48,7 +49,9 @@ watch([() => messages.value.length, latestMessageContent], async () => {
   <section class="page-section chat-page">
     <div class="chat-page-header">
       <div>
-        <p class="eyebrow">引用问答</p>
+        <p class="eyebrow">
+          引用问答
+        </p>
         <h1>知识问答</h1>
         <p>回答固定使用当前 Release，并为每个来源提供可验证的原文定位。</p>
       </div>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { ModelEndpoint } from '@/api/models'
 import type { EndpointTableProps } from './type'
+import type { ModelEndpoint } from '@/api/models'
 import { Activity, Pencil, Power } from '@/components'
 import { endpointTypeLabel } from '@/views/models/enum'
 import { useEndpointTable } from './index'
@@ -37,16 +37,19 @@ const { selectedModel, setSelectedModel } = useEndpointTable()
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="6" class="endpoint-empty">正在加载模型端点…</td>
+            <td colspan="6" class="endpoint-empty">
+              正在加载模型端点…
+            </td>
           </tr>
           <tr v-else-if="!items.length">
-            <td colspan="6" class="endpoint-empty">尚未登记模型端点</td>
+            <td colspan="6" class="endpoint-empty">
+              尚未登记模型端点
+            </td>
           </tr>
           <template v-else>
             <tr v-for="endpoint in items" :key="endpoint.id">
               <td>
-                <strong>{{ endpoint.name }}</strong
-                ><small>{{ endpoint.base_url }}</small>
+                <strong>{{ endpoint.name }}</strong><small>{{ endpoint.base_url }}</small>
               </td>
               <td>{{ endpointTypeLabel[endpoint.endpoint_type] }}</td>
               <td>
@@ -71,11 +74,8 @@ const { selectedModel, setSelectedModel } = useEndpointTable()
                       ? '异常'
                       : '未检查'
                 }}</span>
-                <small v-if="endpoint.last_latency_ms !== null"
-                  >{{ endpoint.last_latency_ms }} ms<span v-if="endpoint.observed_dimension">
-                    · {{ endpoint.observed_dimension }} 维</span
-                  ></small
-                >
+                <small v-if="endpoint.last_latency_ms !== null">{{ endpoint.last_latency_ms }} ms<span v-if="endpoint.observed_dimension">
+                  · {{ endpoint.observed_dimension }} 维</span></small>
               </td>
               <td>
                 <span class="status-pill" :class="endpoint.status">{{

@@ -121,7 +121,7 @@ export interface ReleasePreview {
   expected_active_release_id: string | null
   validation: {
     ready: boolean
-    errors: Array<{ code: string; message: string; document_id?: string; title?: string }>
+    errors: Array<{ code: string, message: string, document_id?: string, title?: string }>
   }
   diff: {
     counts: Record<ReleaseChange, number>
@@ -163,11 +163,13 @@ export interface BuildCreateResult {
 }
 
 export function fetchBuilds(
-  filters: { tenantId?: string; knowledgeBaseId?: string } = {},
+  filters: { tenantId?: string, knowledgeBaseId?: string } = {},
 ): Promise<{ items: BuildRow[] }> {
   const query = new URLSearchParams()
-  if (filters.tenantId) query.set('tenant_id', filters.tenantId)
-  if (filters.knowledgeBaseId) query.set('knowledge_base_id', filters.knowledgeBaseId)
+  if (filters.tenantId)
+    query.set('tenant_id', filters.tenantId)
+  if (filters.knowledgeBaseId)
+    query.set('knowledge_base_id', filters.knowledgeBaseId)
   const suffix = query.size ? `?${query.toString()}` : ''
   return apiRequest(`/api/v1/builds${suffix}`)
 }
@@ -198,7 +200,7 @@ export function publishBuild(
 
 export function fetchReleases(
   knowledgeBaseId: string,
-): Promise<{ active_release_id: string | null; items: ReleaseRow[] }> {
+): Promise<{ active_release_id: string | null, items: ReleaseRow[] }> {
   return apiRequest(`/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/releases`)
 }
 

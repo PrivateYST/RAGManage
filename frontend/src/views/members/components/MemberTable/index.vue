@@ -37,8 +37,7 @@ const emit = defineEmits<MemberTableEmits>()
               <div class="member-identity">
                 <span>{{ member.display_name.slice(0, 1) }}</span>
                 <div>
-                  <strong>{{ member.display_name }}</strong
-                  ><small>{{ member.login }}</small>
+                  <strong>{{ member.display_name }}</strong><small>{{ member.login }}</small>
                 </div>
               </div>
             </td>
@@ -70,8 +69,7 @@ const emit = defineEmits<MemberTableEmits>()
               <span
                 class="status-pill"
                 :class="member.status === 'active' ? 'ready' : 'disabled'"
-                >{{ member.status === 'active' ? '有效' : '已停用' }}</span
-              >
+              >{{ member.status === 'active' ? '有效' : '已停用' }}</span>
             </td>
             <td>{{ formatJoinDate(member.created_at) }}</td>
             <td>

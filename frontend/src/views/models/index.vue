@@ -40,7 +40,9 @@ const {
   <section class="page-section models-page">
     <div class="page-intro">
       <div>
-        <p class="eyebrow">系统配置 / 模型服务</p>
+        <p class="eyebrow">
+          系统配置 / 模型服务
+        </p>
         <h1>模型与运行配置</h1>
         <p class="page-description">
           统一管理网关端点、模型白名单、真实连通性检查和知识库不可变 Profile。
@@ -48,8 +50,8 @@ const {
       </div>
       <div class="model-page-actions">
         <button class="secondary-button" type="button" :disabled="loading" @click="loadPage">
-          <RefreshCw :size="14" />刷新</button
-        ><button
+          <RefreshCw :size="14" />刷新
+        </button><button
           v-if="canManageEndpoints && view === 'endpoints'"
           class="primary-button"
           type="button"
@@ -68,13 +70,9 @@ const {
     <div v-if="lastHealthResult" class="health-result-card" :class="lastHealthResult.result.status">
       <Activity :size="15" />
       <div>
-        <strong>{{ lastHealthResult.endpoint.name }} · {{ lastHealthResult.result.model }}</strong
-        ><small v-if="lastHealthResult.result.status === 'healthy'"
-          >真实调用成功，耗时 {{ lastHealthResult.result.latency_ms }} ms<span
-            v-if="lastHealthResult.result.dimension"
-            >，实测 {{ lastHealthResult.result.dimension }} 维</span
-          ></small
-        ><small v-else>{{ lastHealthResult.result.error }}</small>
+        <strong>{{ lastHealthResult.endpoint.name }} · {{ lastHealthResult.result.model }}</strong><small v-if="lastHealthResult.result.status === 'healthy'">真实调用成功，耗时 {{ lastHealthResult.result.latency_ms }} ms<span
+          v-if="lastHealthResult.result.dimension"
+        >，实测 {{ lastHealthResult.result.dimension }} 维</span></small><small v-else>{{ lastHealthResult.result.error }}</small>
       </div>
     </div>
 
@@ -108,7 +106,9 @@ const {
           <strong>配置对象</strong><small>Profile 归属当前空间中的单个知识库，跨空间不可见。</small>
         </div>
         <select v-model="selectedKnowledgeBaseId" aria-label="选择知识库">
-          <option v-if="!knowledgeBases.length" value="">当前空间暂无可管理知识库</option>
+          <option v-if="!knowledgeBases.length" value="">
+            当前空间暂无可管理知识库
+          </option>
           <option v-for="kb in knowledgeBases" :key="kb.id" :value="kb.id">
             {{ kb.name }}
           </option>

@@ -37,9 +37,7 @@ function formatDate(value: string): string {
         @click="emit('select', conversation.id)"
       >
         <strong>{{ conversation.title }}</strong>
-        <span
-          >{{ conversation.message_count }} 条消息 · {{ formatDate(conversation.updated_at) }}</span
-        >
+        <span>{{ conversation.message_count }} 条消息 · {{ formatDate(conversation.updated_at) }}</span>
       </button>
     </div>
     <div v-else class="chat-conversation-empty">

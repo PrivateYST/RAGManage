@@ -1,5 +1,5 @@
-import type { ReleaseChange } from '@/api/builds'
 import type { ReleaseDiffDialogActions, ReleaseDiffDialogProps } from './type'
+import type { ReleaseChange } from '@/api/builds'
 import { computed } from 'vue'
 
 const CHANGE_LABELS: Record<ReleaseChange, string> = {
@@ -15,16 +15,17 @@ export function useReleaseDiffDialog(
 ) {
   const canPublish = computed(() => Boolean(props.preview?.validation.ready) && !props.publishing)
   const changedItems = computed(
-    () => props.preview?.diff.items.filter((item) => item.change !== 'unchanged') ?? [],
+    () => props.preview?.diff.items.filter(item => item.change !== 'unchanged') ?? [],
   )
   const configChanged = computed(() => {
     const current = props.preview?.current_release
     const candidate = props.preview?.build
-    if (!candidate || !current) return true
+    if (!candidate || !current)
+      return true
     return (
-      current.embedding_definition_hash !== candidate.embedding_definition_hash ||
-      current.provider !== candidate.provider ||
-      current.base_url !== candidate.base_url
+      current.embedding_definition_hash !== candidate.embedding_definition_hash
+      || current.provider !== candidate.provider
+      || current.base_url !== candidate.base_url
     )
   })
 
@@ -41,11 +42,13 @@ export function useReleaseDiffDialog(
   }
 
   function handleClose(): void {
-    if (!props.publishing) actions.close()
+    if (!props.publishing)
+      actions.close()
   }
 
   function handlePublish(): void {
-    if (canPublish.value) actions.publish()
+    if (canPublish.value)
+      actions.publish()
   }
 
   return {

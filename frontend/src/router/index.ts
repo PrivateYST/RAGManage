@@ -7,6 +7,7 @@
 import type { RouteRecordRaw } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
 import AppShell from '@/layouts/AppShell.vue'
+import { useAuthStore } from '@/store/auth'
 import AuditPage from '@/views/audit/index.vue'
 import BuildsPage from '@/views/builds/index.vue'
 import ChatPage from '@/views/chat/index.vue'
@@ -18,7 +19,6 @@ import MembersPage from '@/views/members/index.vue'
 import ModelsPage from '@/views/models/index.vue'
 import SearchTestPage from '@/views/search-test/index.vue'
 import TasksPage from '@/views/tasks/index.vue'
-import { useAuthStore } from '@/store/auth'
 
 /** 路由表：登录页独立于需要认证的工作台布局，其余页面挂在 AppShell 下。 */
 export const routes: RouteRecordRaw[] = [
@@ -59,8 +59,10 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   await auth.initialize()
-  if (to.meta.requiresAuth && !auth.isAuthenticated) return '/login'
-  if (to.path === '/login' && auth.isAuthenticated) return '/dashboard'
+  if (to.meta.requiresAuth && !auth.isAuthenticated)
+    return '/login'
+  if (to.path === '/login' && auth.isAuthenticated)
+    return '/dashboard'
   return true
 })
 

@@ -17,7 +17,7 @@ const publishedKnowledgeBase: KnowledgeBaseRow = {
   updated_at: '2026-09-17T00:00:00Z',
 }
 
-function mountForm(options: { query?: string; canSearch?: boolean; loading?: boolean } = {}) {
+function mountForm(options: { query?: string, canSearch?: boolean, loading?: boolean } = {}) {
   return mount(SearchQueryForm, {
     props: {
       knowledgeBases: [publishedKnowledgeBase],

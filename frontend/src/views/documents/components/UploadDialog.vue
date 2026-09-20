@@ -27,28 +27,35 @@ const fileLabel = computed(() =>
 const canUpload = computed(() => selectedFile.value !== null && !props.busy && !localError.value)
 
 function formatSize(size: number): string {
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  if (size < 1024)
+    return `${size} B`
+  if (size < 1024 * 1024)
+    return `${(size / 1024).toFixed(1)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function validateFile(file: File | undefined): void {
   selectedFile.value = file ?? null
   localError.value = ''
-  if (!file) return
+  if (!file)
+    return
   const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
   if (!allowedExtensions.includes(extension))
     localError.value = '仅支持 Markdown、TXT、DOCX 和电子 PDF 文件'
-  else if (file.size > 50 * 1024 * 1024) localError.value = '文件不能超过 50 MB'
-  else if (file.size === 0) localError.value = '不能上传空文件'
+  else if (file.size > 50 * 1024 * 1024)
+    localError.value = '文件不能超过 50 MB'
+  else if (file.size === 0)
+    localError.value = '不能上传空文件'
 }
 
 function submit(): void {
-  if (canUpload.value && selectedFile.value) emit('upload', selectedFile.value)
+  if (canUpload.value && selectedFile.value)
+    emit('upload', selectedFile.value)
 }
 
 function close(): void {
-  if (props.busy) return
+  if (props.busy)
+    return
   selectedFile.value = null
   localError.value = ''
   emit('close')
@@ -57,7 +64,8 @@ function close(): void {
 watch(
   () => props.open,
   (open) => {
-    if (open) input.value?.focus()
+    if (open)
+      input.value?.focus()
   },
 )
 </script>
@@ -67,14 +75,18 @@ watch(
     <form class="dialog-card upload-dialog" @submit.prevent="submit">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">知识库管理</p>
+          <p class="eyebrow">
+            知识库管理
+          </p>
           <h2>上传文档</h2>
         </div>
         <button class="dialog-close" type="button" :disabled="props.busy" @click="close">
           关闭
         </button>
       </div>
-      <p class="dialog-description">上传后会创建新的文档版本，后台解析完成后才能进入构建和发布。</p>
+      <p class="dialog-description">
+        上传后会创建新的文档版本，后台解析完成后才能进入构建和发布。
+      </p>
       <label class="upload-dropzone" :class="{ 'has-file': selectedFile }">
         <UploadCloud :size="25" aria-hidden="true" />
         <strong>{{ fileLabel }}</strong>
@@ -84,7 +96,7 @@ watch(
           type="file"
           accept=".md,.txt,.docx,.pdf"
           @change="validateFile(($event.target as HTMLInputElement).files?.[0])"
-        />
+        >
       </label>
       <p v-if="localError || props.error" class="field-error">
         {{ localError || props.error }}

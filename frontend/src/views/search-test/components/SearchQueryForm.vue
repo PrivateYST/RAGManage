@@ -17,17 +17,22 @@ const topK = defineModel<number>('topK', { required: true })
 const contextMaxChars = defineModel<number>('contextMaxChars', { required: true })
 
 const selectedKnowledgeBase = computed(() =>
-  props.knowledgeBases.find((item) => item.id === knowledgeBaseId.value),
+  props.knowledgeBases.find(item => item.id === knowledgeBaseId.value),
 )
 
 const searchActionHint = computed(() => {
-  if (props.loading) return '正在加载知识库和发布版本…'
-  if (!props.knowledgeBases.length) return '当前空间暂无知识库'
-  if (!knowledgeBaseId.value) return '请先选择目标知识库'
+  if (props.loading)
+    return '正在加载知识库和发布版本…'
+  if (!props.knowledgeBases.length)
+    return '当前空间暂无知识库'
+  if (!knowledgeBaseId.value)
+    return '请先选择目标知识库'
   if (!selectedKnowledgeBase.value?.active_release_id)
     return '该知识库尚未发布 Release，发布后才能检索'
-  if (!query.value.trim()) return '请输入测试问题后运行检索'
-  if (props.searching) return '正在当前 Release 中执行融合检索…'
+  if (!query.value.trim())
+    return '请输入测试问题后运行检索'
+  if (props.searching)
+    return '正在当前 Release 中执行融合检索…'
   return '将在当前 Release 中融合召回证据，不会生成回答'
 })
 </script>

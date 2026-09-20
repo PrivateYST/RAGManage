@@ -46,7 +46,9 @@ const {
   <section class="page-section members-page">
     <div class="page-intro">
       <div>
-        <p class="eyebrow">客户空间</p>
+        <p class="eyebrow">
+          客户空间
+        </p>
         <h1>成员与权限</h1>
         <p class="page-description">
           管理当前空间的成员身份、知识库角色与授权历史。平台身份不会自动获得客户资料权限。
@@ -75,9 +77,7 @@ const {
     </div>
 
     <div class="member-context-bar">
-      <ShieldCheck :size="15" /><span
-        >当前空间：<strong>{{ auth.activeSpace?.name || '未选择空间' }}</strong></span
-      ><span class="member-context-role">{{ canManageSpace ? '空间管理员' : '知识库管理员' }}</span>
+      <ShieldCheck :size="15" /><span>当前空间：<strong>{{ auth.activeSpace?.name || '未选择空间' }}</strong></span><span class="member-context-role">{{ canManageSpace ? '空间管理员' : '知识库管理员' }}</span>
     </div>
 
     <div v-if="canManageSpace" class="member-stats-grid">
@@ -132,8 +132,7 @@ const {
     <section v-if="view === 'space' && canManageSpace" class="content-card member-list-card">
       <header>
         <div>
-          <strong>空间成员</strong
-          ><small>停用成员后，其当前会话中的所有空间与知识库访问会立即失效。</small>
+          <strong>空间成员</strong><small>停用成员后，其当前会话中的所有空间与知识库访问会立即失效。</small>
         </div>
         <span>共 {{ spaceMembers.length }} 人</span>
       </header>

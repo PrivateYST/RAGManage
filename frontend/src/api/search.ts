@@ -42,7 +42,7 @@ export interface SearchTestResult {
     valid_chunks: number
     embedded_chunks: number
   } | null
-  filters: Array<{ name: string; value: string; filtered_count: number }>
+  filters: Array<{ name: string, value: string, filtered_count: number }>
   timings: Record<string, number>
   context: string
   items: SearchEvidence[]

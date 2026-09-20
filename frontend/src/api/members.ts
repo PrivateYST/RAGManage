@@ -53,7 +53,7 @@ export function fetchSpaceMembers(spaceId: string): Promise<{ items: SpaceMember
 
 export function addSpaceMember(
   spaceId: string,
-  payload: { login: string; role_code: SpaceRoleCode },
+  payload: { login: string, role_code: SpaceRoleCode },
 ): Promise<SpaceMember> {
   return apiRequest(`/api/v1/spaces/${spaceId}/members`, {
     method: 'POST',
@@ -64,7 +64,7 @@ export function addSpaceMember(
 export function updateSpaceMember(
   spaceId: string,
   userId: string,
-  payload: { role_code?: SpaceRoleCode; status?: MembershipStatus },
+  payload: { role_code?: SpaceRoleCode, status?: MembershipStatus },
 ): Promise<SpaceMember> {
   return apiRequest(`/api/v1/spaces/${spaceId}/members/${userId}`, {
     method: 'PATCH',
@@ -86,7 +86,7 @@ export function fetchKnowledgeBaseMemberCandidates(
 
 export function addKnowledgeBaseMember(
   knowledgeBaseId: string,
-  payload: { user_id: number; role_code: KnowledgeBaseRoleCode },
+  payload: { user_id: number, role_code: KnowledgeBaseRoleCode },
 ): Promise<KnowledgeBaseMember> {
   return apiRequest(`/api/v1/knowledge-bases/${knowledgeBaseId}/members`, {
     method: 'POST',
@@ -97,7 +97,7 @@ export function addKnowledgeBaseMember(
 export function updateKnowledgeBaseMember(
   knowledgeBaseId: string,
   userId: string,
-  payload: { role_code?: KnowledgeBaseRoleCode; status?: MembershipStatus },
+  payload: { role_code?: KnowledgeBaseRoleCode, status?: MembershipStatus },
 ): Promise<KnowledgeBaseMember> {
   return apiRequest(`/api/v1/knowledge-bases/${knowledgeBaseId}/members/${userId}`, {
     method: 'PATCH',

@@ -10,10 +10,10 @@ const emit = defineEmits<{
   confirm: [knowledgeBaseId: string]
 }>()
 
-const { targetKnowledgeBaseId, selectedKnowledgeBase, canConfirm, handleClose, handleConfirm } =
-  useCreateBuildDialog(props, {
+const { targetKnowledgeBaseId, selectedKnowledgeBase, canConfirm, handleClose, handleConfirm }
+  = useCreateBuildDialog(props, {
     close: () => emit('close'),
-    confirm: (knowledgeBaseId) => emit('confirm', knowledgeBaseId),
+    confirm: knowledgeBaseId => emit('confirm', knowledgeBaseId),
   })
 </script>
 
@@ -30,7 +30,9 @@ const { targetKnowledgeBaseId, selectedKnowledgeBase, canConfirm, handleClose, h
           <div class="create-build-heading">
             <span class="create-build-icon"><DatabaseZap :size="18" aria-hidden="true" /></span>
             <div>
-              <h2 id="create-build-title">创建索引构建</h2>
+              <h2 id="create-build-title">
+                创建索引构建
+              </h2>
               <p>选择需要冻结文档版本并生成向量索引的知识库。</p>
             </div>
           </div>

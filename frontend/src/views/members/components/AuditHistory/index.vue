@@ -26,8 +26,7 @@ defineProps<AuditHistoryProps>()
         <span class="audit-dot" />
         <div>
           <div>
-            <strong>{{ actionLabel(item.action) }}</strong
-            ><time>{{ new Date(item.created_at).toLocaleString('zh-CN') }}</time>
+            <strong>{{ actionLabel(item.action) }}</strong><time>{{ new Date(item.created_at).toLocaleString('zh-CN') }}</time>
           </div>
           <p>
             {{ item.actor_name || '系统' }} 对

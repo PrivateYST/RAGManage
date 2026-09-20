@@ -29,9 +29,11 @@ async function refresh() {
   const timeout = setTimeout(() => current.abort(), 10000)
   try {
     health.value = await fetchHealth(current.signal)
-  } catch {
+  }
+  catch {
     error.value = '暂时无法连接后端，请检查服务是否启动后重试。'
-  } finally {
+  }
+  finally {
     clearTimeout(timeout)
     loading.value = false
   }
@@ -51,7 +53,9 @@ onUnmounted(() => controller?.abort())
     <p v-if="error" role="alert" class="error">
       {{ error }}
     </p>
-    <p v-else-if="loading" role="status">正在连接本地服务…</p>
+    <p v-else-if="loading" role="status">
+      正在连接本地服务…
+    </p>
     <template v-else-if="health">
       <p role="status">
         {{ health.status === 'ready' ? '基础服务已就绪' : '部分服务尚未就绪' }}

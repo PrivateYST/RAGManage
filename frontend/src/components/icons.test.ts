@@ -5,7 +5,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { Search } from './icons'
 
-describe('Iconify icon adapter', () => {
+describe('iconify icon adapter', () => {
   // 业务页面依赖本地打包的图标数据，不能因 Iconify 公共接口不可用而产生网络请求。
   it('renders a local icon with the requested size', () => {
     const wrapper = mount(Search, { props: { size: 18 } })

@@ -3,7 +3,7 @@ import type { ChatMessageRow } from '@/api/chat'
 import { BookOpen, RefreshCw, ThumbsDown, ThumbsUp, UserRound } from '@/components'
 import MarkdownContent from './MarkdownContent/index.vue'
 
-defineProps<{ message: ChatMessageRow; busy: boolean }>()
+defineProps<{ message: ChatMessageRow, busy: boolean }>()
 
 const emit = defineEmits<{
   citations: [message: ChatMessageRow]
@@ -13,7 +13,8 @@ const emit = defineEmits<{
 }>()
 
 function stateLabel(message: ChatMessageRow): string {
-  if (message.hidden) return '来源权限已失效，回答已隐藏'
+  if (message.hidden)
+    return '来源权限已失效，回答已隐藏'
   return (
     {
       pending: '等待生成',
@@ -25,7 +26,8 @@ function stateLabel(message: ChatMessageRow): string {
 }
 
 function outcomeLabel(message: ChatMessageRow): string {
-  if (!message.outcome) return ''
+  if (!message.outcome)
+    return ''
   const labels: Record<NonNullable<ChatMessageRow['outcome']>, string> = {
     answered: '已回答',
     no_answer: '未找到依据',
@@ -50,8 +52,7 @@ function outcomeLabel(message: ChatMessageRow): string {
           v-if="message.role === 'assistant' && outcomeLabel(message)"
           class="chat-outcome"
           :class="message.outcome ?? ''"
-          >{{ outcomeLabel(message) }}</span
-        >
+        >{{ outcomeLabel(message) }}</span>
       </header>
       <MarkdownContent
         v-if="message.role === 'assistant' && message.content"

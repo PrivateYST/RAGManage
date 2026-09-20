@@ -143,17 +143,22 @@ async function loadData(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
-    if (route.path === '/knowledge-bases')
+    if (route.path === '/knowledge-bases') {
       knowledgeBases.value = auth.activeSpaceId
         ? (await fetchKnowledgeBases(auth.activeSpaceId)).items
         : []
-    if (route.path === '/system/menus') menus.value = (await fetchMenus()).items
-    if (route.path === '/system/users') users.value = (await fetchUsers()).items
+    }
+    if (route.path === '/system/menus')
+      menus.value = (await fetchMenus()).items
+    if (route.path === '/system/users')
+      users.value = (await fetchUsers()).items
     if (route.path === '/system/spaces' || route.path === '/system/users')
       tenants.value = (await fetchTenants()).items
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '数据加载失败'
-  } finally {
+  }
+  finally {
     loading.value = false
   }
 }
@@ -195,9 +200,11 @@ async function saveUser(): Promise<void> {
     })
     showUserDialog.value = false
     await loadData()
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '用户创建失败'
-  } finally {
+  }
+  finally {
     savingUser.value = false
   }
 }
@@ -217,7 +224,8 @@ function handlePrimaryAction(): void {
     }
     showKnowledgeBaseDialog.value = true
   }
-  if (route.path === '/system/users') openUserDialog()
+  if (route.path === '/system/users')
+    openUserDialog()
   if (route.path === '/system/spaces') {
     tenantForm.value = { code: '', name: '' }
     showTenantDialog.value = true
@@ -234,9 +242,11 @@ async function saveKnowledgeBase(): Promise<void> {
     })
     showKnowledgeBaseDialog.value = false
     await loadData()
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '知识库创建失败'
-  } finally {
+  }
+  finally {
     savingKnowledgeBase.value = false
   }
 }
@@ -250,9 +260,11 @@ async function saveTenant(): Promise<void> {
     auth.setActiveSpace(tenant.id)
     showTenantDialog.value = false
     await loadData()
-  } catch (cause) {
+  }
+  catch (cause) {
     error.value = cause instanceof Error ? cause.message : '空间创建失败'
-  } finally {
+  }
+  finally {
     savingTenant.value = false
   }
 }
@@ -285,7 +297,9 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
     </div>
     <div v-else-if="route.path === '/knowledge-bases'" class="content-card table-card">
       <div class="table-toolbar">
-        <div class="search-box"><Search :size="16" /><input placeholder="搜索知识库" /></div>
+        <div class="search-box">
+          <Search :size="16" /><input placeholder="搜索知识库">
+        </div>
         <span class="table-count">共 {{ knowledgeBases.length }} 个知识库</span>
       </div>
       <table>
@@ -346,8 +360,7 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
               <span
                 class="status-pill"
                 :class="tenant.status === 'active' ? 'published' : 'disabled'"
-                >{{ tenant.status === 'active' ? '启用' : '停用' }}</span
-              >
+              >{{ tenant.status === 'active' ? '启用' : '停用' }}</span>
             </td>
             <td>{{ new Date(tenant.created_at).toLocaleDateString('zh-CN') }}</td>
           </tr>
@@ -369,8 +382,7 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
         <tbody>
           <tr v-for="menu in menus" :key="menu.id">
             <td>
-              <strong>{{ menu.name }}</strong
-              ><small>{{ menu.code }}</small>
+              <strong>{{ menu.name }}</strong><small>{{ menu.code }}</small>
             </td>
             <td>
               {{ menu.kind === 'directory' ? '目录' : menu.kind === 'menu' ? '页面' : '按钮' }}
@@ -408,8 +420,7 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
         <tbody>
           <tr v-for="user in users" :key="user.id">
             <td>
-              <strong>{{ user.display_name }}</strong
-              ><small>{{ user.login }}</small>
+              <strong>{{ user.display_name }}</strong><small>{{ user.login }}</small>
             </td>
             <td>{{ user.platform_role || '空间成员' }}</td>
             <td>{{ user.space_count }}</td>
@@ -417,8 +428,7 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
               <span
                 class="status-pill"
                 :class="user.status === 'active' ? 'published' : 'disabled'"
-                >{{ user.status === 'active' ? '正常' : '停用' }}</span
-              >
+              >{{ user.status === 'active' ? '正常' : '停用' }}</span>
             </td>
             <td>
               {{
@@ -442,48 +452,45 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
       <p>
         页面框架和权限菜单已就绪，业务接口正在接入。当前登录用户：{{ auth.user?.display_name }}。
       </p>
-      <div class="placeholder-hint">这里将展示真实数据、筛选、分页和操作反馈。</div>
+      <div class="placeholder-hint">
+        这里将展示真实数据、筛选、分页和操作反馈。
+      </div>
     </div>
   </section>
   <div v-if="showUserDialog" class="dialog-backdrop" @click.self="showUserDialog = false">
     <form class="dialog-card" @submit.prevent="saveUser">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">系统管理</p>
+          <p class="eyebrow">
+            系统管理
+          </p>
           <h2>新建用户</h2>
         </div>
-        <button type="button" class="dialog-close" @click="showUserDialog = false">关闭</button>
+        <button type="button" class="dialog-close" @click="showUserDialog = false">
+          关闭
+        </button>
       </div>
-      <label
-        >登录名<input v-model.trim="userForm.login" required minlength="3" maxlength="120"
-      /></label>
-      <label>显示名称<input v-model.trim="userForm.display_name" required maxlength="100" /></label>
-      <label
-        >初始密码<input v-model="userForm.password" required minlength="8" type="password"
-      /></label>
-      <label
-        >平台角色<select v-model="userForm.platform_role_code">
-          <option value="">普通用户</option>
-          <option value="platform_admin">平台管理员</option>
-        </select></label
-      >
-      <label
-        >加入空间<select v-model="userForm.tenant_id">
-          <option value="">暂不分配</option>
-          <option v-for="tenant in tenants" :key="tenant.id" :value="tenant.id">
-            {{ tenant.name }}
-          </option>
-        </select></label
-      >
-      <label v-if="userForm.tenant_id"
-        >空间角色<select v-model="userForm.tenant_role_code">
-          <option value="space_admin">空间管理员</option>
-          <option value="customer_reader">客户用户</option>
-        </select></label
-      >
+      <label>登录名<input v-model.trim="userForm.login" required minlength="3" maxlength="120"></label>
+      <label>显示名称<input v-model.trim="userForm.display_name" required maxlength="100"></label>
+      <label>初始密码<input v-model="userForm.password" required minlength="8" type="password"></label>
+      <label>平台角色<select v-model="userForm.platform_role_code">
+        <option value="">普通用户</option>
+        <option value="platform_admin">平台管理员</option>
+      </select></label>
+      <label>加入空间<select v-model="userForm.tenant_id">
+        <option value="">暂不分配</option>
+        <option v-for="tenant in tenants" :key="tenant.id" :value="tenant.id">
+          {{ tenant.name }}
+        </option>
+      </select></label>
+      <label v-if="userForm.tenant_id">空间角色<select v-model="userForm.tenant_role_code">
+        <option value="space_admin">空间管理员</option>
+        <option value="customer_reader">客户用户</option>
+      </select></label>
       <div class="dialog-actions">
-        <button type="button" class="secondary-button" @click="showUserDialog = false">取消</button
-        ><button class="primary-button" :disabled="savingUser">
+        <button type="button" class="secondary-button" @click="showUserDialog = false">
+          取消
+        </button><button class="primary-button" :disabled="savingUser">
           {{ savingUser ? '保存中…' : '创建用户' }}
         </button>
       </div>
@@ -493,27 +500,28 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
     <form class="dialog-card" @submit.prevent="saveTenant">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">平台管理</p>
+          <p class="eyebrow">
+            平台管理
+          </p>
           <h2>新建客户空间</h2>
         </div>
-        <button type="button" class="dialog-close" @click="showTenantDialog = false">关闭</button>
+        <button type="button" class="dialog-close" @click="showTenantDialog = false">
+          关闭
+        </button>
       </div>
-      <label
-        >空间名称<input v-model.trim="tenantForm.name" required minlength="2" maxlength="120"
-      /></label>
-      <label
-        >空间编码<input
-          v-model.trim="tenantForm.code"
-          required
-          minlength="2"
-          maxlength="64"
-          pattern="[a-z0-9][a-z0-9_-]+"
-          placeholder="例如 customer-a"
-      /></label>
+      <label>空间名称<input v-model.trim="tenantForm.name" required minlength="2" maxlength="120"></label>
+      <label>空间编码<input
+        v-model.trim="tenantForm.code"
+        required
+        minlength="2"
+        maxlength="64"
+        pattern="[a-z0-9][a-z0-9_-]+"
+        placeholder="例如 customer-a"
+      ></label>
       <div class="dialog-actions">
         <button type="button" class="secondary-button" @click="showTenantDialog = false">
-          取消</button
-        ><button class="primary-button" :disabled="savingTenant">
+          取消
+        </button><button class="primary-button" :disabled="savingTenant">
           {{ savingTenant ? '保存中…' : '创建空间' }}
         </button>
       </div>
@@ -527,41 +535,39 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
     <form class="dialog-card" @submit.prevent="saveKnowledgeBase">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">知识库管理</p>
+          <p class="eyebrow">
+            知识库管理
+          </p>
           <h2>创建知识库</h2>
         </div>
         <button type="button" class="dialog-close" @click="showKnowledgeBaseDialog = false">
           关闭
         </button>
       </div>
-      <label>所属空间<input :value="auth.activeSpace?.name || '暂无可用空间'" disabled /></label>
-      <label
-        >知识库名称<input
-          v-model.trim="knowledgeBaseForm.name"
-          required
-          minlength="2"
-          maxlength="120"
-      /></label>
-      <label
-        >业务用途<select v-model="knowledgeBaseForm.purpose">
-          <option value="general">通用知识</option>
-          <option value="product">产品说明</option>
-          <option value="troubleshooting">故障排查</option>
-          <option value="rule">业务规则</option>
-        </select></label
-      >
-      <label
-        >说明<textarea
-          v-model.trim="knowledgeBaseForm.description"
-          maxlength="1000"
-          rows="4"
-          placeholder="说明知识库覆盖的业务范围"
-        />
+      <label>所属空间<input :value="auth.activeSpace?.name || '暂无可用空间'" disabled></label>
+      <label>知识库名称<input
+        v-model.trim="knowledgeBaseForm.name"
+        required
+        minlength="2"
+        maxlength="120"
+      ></label>
+      <label>业务用途<select v-model="knowledgeBaseForm.purpose">
+        <option value="general">通用知识</option>
+        <option value="product">产品说明</option>
+        <option value="troubleshooting">故障排查</option>
+        <option value="rule">业务规则</option>
+      </select></label>
+      <label>说明<textarea
+        v-model.trim="knowledgeBaseForm.description"
+        maxlength="1000"
+        rows="4"
+        placeholder="说明知识库覆盖的业务范围"
+      />
       </label>
       <div class="dialog-actions">
         <button type="button" class="secondary-button" @click="showKnowledgeBaseDialog = false">
-          取消</button
-        ><button class="primary-button" :disabled="savingKnowledgeBase">
+          取消
+        </button><button class="primary-button" :disabled="savingKnowledgeBase">
           {{ savingKnowledgeBase ? '创建中…' : '创建知识库' }}
         </button>
       </div>

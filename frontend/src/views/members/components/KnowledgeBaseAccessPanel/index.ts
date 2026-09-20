@@ -1,5 +1,5 @@
-import type { KnowledgeBaseMemberCandidate, KnowledgeBaseRoleCode } from '@/api/members'
 import type { KnowledgeBaseAccessPanelEmits, KnowledgeBaseAccessPanelProps } from './type'
+import type { KnowledgeBaseMemberCandidate, KnowledgeBaseRoleCode } from '@/api/members'
 import { computed, shallowRef, toRef } from 'vue'
 import { KNOWLEDGE_BASE_ROLE_LABELS } from '@/views/members/enum'
 
@@ -16,14 +16,15 @@ export function useKnowledgeBaseAccessPanel(
   const roleCode = shallowRef<KnowledgeBaseRoleCode>('reader')
   const candidates = toRef(props, 'candidates')
   const availableCandidates = computed(() =>
-    candidates.value.filter((item) => item.grant_status !== 'active'),
+    candidates.value.filter(item => item.grant_status !== 'active'),
   )
   const selectedCandidate = computed<KnowledgeBaseMemberCandidate | null>(
-    () => candidates.value.find((item) => item.id === candidateId.value) ?? null,
+    () => candidates.value.find(item => item.id === candidateId.value) ?? null,
   )
 
   function submitGrant(): void {
-    if (!candidateId.value) return
+    if (!candidateId.value)
+      return
     emit('addGrant', { userId: candidateId.value, roleCode: roleCode.value })
     candidateId.value = ''
     roleCode.value = 'reader'

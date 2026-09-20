@@ -33,7 +33,8 @@ function similarityLabel(value: number): string {
 
 function locatorLabel(item: SearchEvidence): string {
   const locator = item.locator
-  if (locator.page !== undefined) return `第 ${locator.page} 页`
+  if (locator.page !== undefined)
+    return `第 ${locator.page} 页`
   if (locator.line_start !== undefined)
     return `第 ${locator.line_start}–${locator.line_end ?? locator.line_start} 行`
   if (locator.char_start !== undefined)
@@ -91,16 +92,12 @@ function timingValue(name: string): string {
         <article>
           <span>候选证据</span>
           <strong>{{ result.items.length }}</strong>
-          <small
-            >{{ result.items.filter((item) => item.context_included).length }} 条进入上下文</small
-          >
+          <small>{{ result.items.filter((item) => item.context_included).length }} 条进入上下文</small>
         </article>
         <article>
           <span>有效来源</span>
-          <strong
-            >{{ result.source_stats?.valid_documents ?? 0 }} /
-            {{ result.source_stats?.total_documents ?? 0 }}</strong
-          >
+          <strong>{{ result.source_stats?.valid_documents ?? 0 }} /
+            {{ result.source_stats?.total_documents ?? 0 }}</strong>
           <small>{{ result.source_stats?.invalid_documents ?? 0 }} 份失效来源已过滤</small>
         </article>
         <article>
@@ -149,16 +146,12 @@ function timingValue(name: string): string {
             <p>{{ item.content }}</p>
             <footer>
               <span><MapPin :size="12" aria-hidden="true" />{{ locatorLabel(item) }}</span>
-              <span
-                ><Clock3 :size="12" aria-hidden="true" />向量排名
-                {{ item.vector_rank ?? item.raw_rank }}</span
-              >
+              <span><Clock3 :size="12" aria-hidden="true" />向量排名
+                {{ item.vector_rank ?? item.raw_rank }}</span>
               <span v-if="item.lexical_rank" class="lexical-rank-mark">
                 <GitMerge :size="12" aria-hidden="true" />关键词排名 {{ item.lexical_rank }}
               </span>
-              <span v-if="item.context_included" class="context-mark"
-                >证据 {{ item.evidence_no }} · 已进入上下文</span
-              >
+              <span v-if="item.context_included" class="context-mark">证据 {{ item.evidence_no }} · 已进入上下文</span>
               <span v-else>未进入上下文</span>
             </footer>
           </div>

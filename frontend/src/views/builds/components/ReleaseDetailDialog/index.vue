@@ -6,8 +6,8 @@ import './index.scss'
 
 const props = defineProps<ReleaseDetailDialogProps>()
 const emit = defineEmits<ReleaseDetailDialogEmits>()
-const { totalChunks, totalEmbeddings, formatDate, shortHash, providerLabel, itemStateLabel } =
-  useReleaseDetailDialog(props)
+const { totalChunks, totalEmbeddings, formatDate, shortHash, providerLabel, itemStateLabel }
+  = useReleaseDetailDialog(props)
 </script>
 
 <template>
@@ -105,24 +105,23 @@ const { totalChunks, totalEmbeddings, formatDate, shortHash, providerLabel, item
             </div>
             <div v-if="detail.items.length" class="release-document-table">
               <div class="release-document-row header">
-                <span>文档</span><span>版本</span><span>切片</span><span>向量</span
-                ><span>状态</span>
+                <span>文档</span><span>版本</span><span>切片</span><span>向量</span><span>状态</span>
               </div>
               <div
                 v-for="item in detail.items"
                 :key="item.document_id"
                 class="release-document-row"
               >
-                <span class="release-document-name"
-                  ><FileText :size="14" aria-hidden="true" />{{ item.title }}</span
-                >
+                <span class="release-document-name"><FileText :size="14" aria-hidden="true" />{{ item.title }}</span>
                 <span>v{{ item.version_no }}</span>
                 <span>{{ item.chunk_count }}</span>
                 <span>{{ item.embedded_count }}</span>
                 <span class="release-document-state">{{ itemStateLabel(item.state) }}</span>
               </div>
             </div>
-            <div v-else class="release-document-empty">当前 Release 没有文档。</div>
+            <div v-else class="release-document-empty">
+              当前 Release 没有文档。
+            </div>
           </section>
         </div>
       </section>

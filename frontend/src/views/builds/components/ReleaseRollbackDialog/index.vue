@@ -25,7 +25,9 @@ const { canConfirm, providerLabel, handleClose, handleConfirm } = useReleaseRoll
           <div class="release-rollback-heading">
             <span><RotateCcw :size="18" aria-hidden="true" /></span>
             <div>
-              <h2 id="release-rollback-title">回退 Release</h2>
+              <h2 id="release-rollback-title">
+                回退 Release
+              </h2>
               <p>将知识问答使用的检索版本切换到历史 Release。</p>
             </div>
           </div>
@@ -45,34 +47,26 @@ const { canConfirm, providerLabel, handleClose, handleConfirm } = useReleaseRoll
             <article>
               <span>当前使用</span>
               <strong>Release #{{ currentRelease.id }}</strong>
-              <small
-                >构建 #{{ currentRelease.build_id }} ·
-                {{ currentRelease.document_count }} 份文档</small
-              >
+              <small>构建 #{{ currentRelease.build_id }} ·
+                {{ currentRelease.document_count }} 份文档</small>
             </article>
             <RotateCcw :size="18" aria-hidden="true" />
             <article class="target">
               <span>回退目标</span>
               <strong>Release #{{ targetRelease.id }}</strong>
-              <small
-                >构建 #{{ targetRelease.build_id }} ·
-                {{ targetRelease.document_count }} 份文档</small
-              >
+              <small>构建 #{{ targetRelease.build_id }} ·
+                {{ targetRelease.document_count }} 份文档</small>
             </article>
           </section>
 
           <section class="release-rollback-target">
             <div>
-              <span>嵌入模型</span
-              ><strong>{{ targetRelease.model_name }} · {{ targetRelease.dimension }} 维</strong>
+              <span>嵌入模型</span><strong>{{ targetRelease.model_name }} · {{ targetRelease.dimension }} 维</strong>
             </div>
             <div>
-              <span>接入配置</span
-              ><strong
-                >{{ providerLabel(targetRelease.provider) }} · Profile #{{
-                  targetRelease.embedding_profile_id
-                }}</strong
-              >
+              <span>接入配置</span><strong>{{ providerLabel(targetRelease.provider) }} · Profile #{{
+                targetRelease.embedding_profile_id
+              }}</strong>
             </div>
           </section>
 
