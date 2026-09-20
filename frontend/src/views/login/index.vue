@@ -15,15 +15,19 @@ const canSubmit = computed(
 
 async function submit(): Promise<void> {
   submitted.value = true
-  if (!canSubmit.value) return
-  if (await auth.signIn(loginName.value.trim(), password.value)) await router.push('/')
+  if (!canSubmit.value)
+    return
+  if (await auth.signIn(loginName.value.trim(), password.value))
+    await router.push('/')
 }
 </script>
 
 <template>
   <main class="login-page">
     <section class="login-brand">
-      <div class="brand-lockup"><span class="brand-mark">R</span><span>RAGManage</span></div>
+      <div class="brand-lockup">
+        <span class="brand-mark">R</span><span>RAGManage</span>
+      </div>
       <p>企业知识库管理与引用问答平台</p>
       <div class="login-value">
         <span>⌁</span>
@@ -36,27 +40,31 @@ async function submit(): Promise<void> {
     </section>
     <section class="login-card" aria-labelledby="login-title">
       <div class="login-heading">
-        <p class="eyebrow">欢迎回来</p>
-        <h1 id="login-title">登录工作台</h1>
+        <p class="eyebrow">
+          欢迎回来
+        </p>
+        <h1 id="login-title">
+          登录工作台
+        </h1>
         <p>使用管理员为你开通的账号登录</p>
       </div>
       <form @submit.prevent="submit">
-        <label for="login-name">账号</label
-        ><input
+        <label for="login-name">账号</label><input
           id="login-name"
           v-model="loginName"
           autocomplete="username"
           placeholder="请输入账号"
-        />
-        <label for="login-password">密码</label
-        ><input
+        >
+        <label for="login-password">密码</label><input
           id="login-password"
           v-model="password"
           type="password"
           autocomplete="current-password"
           placeholder="请输入密码"
-        />
-        <p v-if="submitted && !canSubmit" class="field-error">请输入账号和密码</p>
+        >
+        <p v-if="submitted && !canSubmit" class="field-error">
+          请输入账号和密码
+        </p>
         <p v-if="auth.error" class="field-error">
           {{ auth.error }}
         </p>
