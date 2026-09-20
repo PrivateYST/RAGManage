@@ -38,7 +38,9 @@ jobs:
           Set-Location $deployRoot
           # Fail before building images when the runner service cannot reach Docker Desktop.
           # The Docker named pipe is protected by the docker-users group on Windows.
-          docker info *> $null
+          # Use cmd redirection so Docker's non-fatal capability warnings do not become
+          # PowerShell NativeCommandError records under ErrorActionPreference=Stop.
+          cmd.exe /d /c "docker info >nul 2>nul"
           if ($LASTEXITCODE -ne 0) {
             throw 'Docker daemon is unavailable to the runner account. Run the runner under a Docker-enabled user or add its service identity to docker-users, then restart the runner service.'
           }
