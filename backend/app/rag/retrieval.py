@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
 import asyncpg
@@ -237,8 +237,9 @@ async def execute_vector_search(
     context_max_chars: int,
     gateway: ModelGatewayClient | None = None,
     message_id: int | None = None,
+    on_embedding_usage: Callable[[Mapping[str, Any], str], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
-    """只在已授权空间、知识库和当前 Release 内执行向量与词法融合召回。"""
+    """执行融合召回，并在嵌入前后持久上报估算/真实用量以覆盖中断恢复。"""
     total_started = time.perf_counter()
     profiles: dict[str, Any] = {
         "release_id": active_release_id,
@@ -282,6 +283,8 @@ async def execute_vector_search(
             "timings": timings,
             "context": "",
             "items": [],
+            "embedding_usage": None,
+            "embedding_model": None,
         }
 
     if active_release_id is None:
@@ -434,8 +437,25 @@ async def execute_vector_search(
             )
 
         embedding_started = time.perf_counter()
-        query_vector = (await client.embed([query]))[0]
+        if on_embedding_usage is not None:
+            estimated_tokens = len(query.strip().encode("utf-8"))
+            await on_embedding_usage(
+                {
+                    "prompt_tokens": estimated_tokens,
+                    "completion_tokens": 0,
+                    "total_tokens": estimated_tokens,
+                    "usage_source": "estimate",
+                },
+                str(release_row["model_name"]),
+            )
+        embedding_result = await client.embed_with_usage([query])
+        query_vector = embedding_result["embeddings"][0]
         timings["embedding_ms"] = _elapsed_ms(embedding_started)
+        if on_embedding_usage is not None:
+            await on_embedding_usage(
+                embedding_result["usage"],
+                embedding_result["model_name"],
+            )
     except (httpx.HTTPError, ValueError) as error:
         timings["total_ms"] = _elapsed_ms(total_started)
         await _finish_trace(
@@ -583,4 +603,6 @@ async def execute_vector_search(
         "timings": timings,
         "context": context,
         "items": items,
+        "embedding_usage": embedding_result["usage"],
+        "embedding_model": embedding_result["model_name"],
     }

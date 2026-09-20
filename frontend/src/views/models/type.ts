@@ -9,4 +9,5 @@ export interface EndpointSubmitPayload extends EndpointInput {
   id?: string
 }
 
-export type ModelPageView = 'endpoints' | 'profiles'
+/** 模型配置页的三个互斥工作区。 */
+export type ModelPageView = 'endpoints' | 'profiles' | 'api-keys'

@@ -1,3 +1,5 @@
+"""浏览器会话与公司 API Key 身份认证、密码校验和认证审计。"""
+
 from __future__ import annotations
 
 import hashlib
@@ -10,6 +12,7 @@ import asyncpg
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
+from app.core.api_keys import authenticate_api_key
 from app.core.config import Settings
 
 password_hasher = PasswordHasher()
@@ -17,6 +20,7 @@ SESSION_COOKIE = "ragmanage_session"
 
 
 def _token_hash(token: str) -> str:
+    """将高熵会话令牌转换为不可逆数据库索引值，避免保存可用明文。"""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
@@ -89,6 +93,7 @@ async def ensure_bootstrap_admin(settings: Settings) -> None:
 
 
 async def authenticate(settings: Settings, login: str, password: str) -> dict[str, Any] | None:
+    """校验启用用户的密码并创建带过期时间、可审计的浏览器会话。"""
     if not settings.database_url:
         return None
     connection = await asyncpg.connect(settings.database_url, timeout=5)
@@ -156,6 +161,7 @@ async def authenticate(settings: Settings, login: str, password: str) -> dict[st
 
 
 async def load_user_from_token(settings: Settings, token: str | None) -> dict[str, Any] | None:
+    """加载未撤销且未过期的会话身份，并刷新最近访问时间。"""
     if not settings.database_url or not token:
         return None
     connection = await asyncpg.connect(settings.database_url, timeout=5)
@@ -181,7 +187,34 @@ async def load_user_from_token(settings: Settings, token: str | None) -> dict[st
         await connection.close()
 
 
+async def load_user_from_api_key(settings: Settings, raw_key: str | None) -> dict[str, Any] | None:
+    """通过公司下发的 Bearer API Key 加载客户调用身份，不创建浏览器会话。"""
+    if not settings.database_url or not raw_key:
+        return None
+    connection = await asyncpg.connect(settings.database_url, timeout=5)
+    try:
+        identity = await authenticate_api_key(connection, raw_key)
+        if identity is None:
+            return None
+        user = {
+            "id": identity["id"],
+            "login": identity["login"],
+            "display_name": identity["display_name"],
+            "platform_role": identity["platform_role"],
+        }
+        context = await load_user_context(connection, user)
+        # API Key 只能代表客户空间调用，不能继承创建者的平台管理员权限。
+        context["user"]["platform_role"] = None
+        context["api_key_id"] = identity["api_key_id"]
+        context["api_key_tenant_id"] = identity["api_key_tenant_id"]
+        context["api_key_name"] = identity["api_key_name"]
+        return context
+    finally:
+        await connection.close()
+
+
 async def revoke_token(settings: Settings, token: str | None) -> None:
+    """幂等撤销浏览器会话，并在实际状态变化时记录退出审计。"""
     if not settings.database_url or not token:
         return
     connection = await asyncpg.connect(settings.database_url, timeout=5)
@@ -213,6 +246,7 @@ async def load_user_context(
     user: asyncpg.Record,
     token: str | None = None,
 ) -> dict[str, Any]:
+    """汇总用户的启用空间与菜单权限；API Key 调用方会在上层收窄平台角色。"""
     memberships = await connection.fetch(
         """
         SELECT t.id::text, t.code, t.name, r.code AS role

@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     model_gateway_api_key: SecretStr = SecretStr("")
     model_gateway_allowed_models: str = "qwen3-embedding:0.6b,qwen3.8:27b"
     generation_model: str = "qwen3.8:27b"
+    # API Key 额度预扣的最大生成预算；真实结算仍以网关 usage 为准。
+    generation_max_tokens: int = 1024
     embedding_model: str = "qwen3-embedding:0.6b"
     embedding_dimensions: int = 1024
     bootstrap_admin_login: str = "admin"

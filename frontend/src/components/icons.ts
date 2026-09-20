@@ -21,6 +21,7 @@ import icon_CheckCircle2 from '@iconify-icons/lucide/circle-check'
 import icon_XCircle from '@iconify-icons/lucide/circle-x'
 import icon_Clock3 from '@iconify-icons/lucide/clock-3'
 import icon_UploadCloud from '@iconify-icons/lucide/cloud-upload'
+import icon_Copy from '@iconify-icons/lucide/copy'
 import icon_Cpu from '@iconify-icons/lucide/cpu'
 import icon_Database from '@iconify-icons/lucide/database'
 import icon_DatabaseZap from '@iconify-icons/lucide/database-zap'
@@ -117,6 +118,7 @@ export const CheckCircle2 = createIcon(icon_CheckCircle2)
 export const ChevronDown = createIcon(icon_ChevronDown)
 export const ChevronRight = createIcon(icon_ChevronRight)
 export const Clock3 = createIcon(icon_Clock3)
+export const Copy = createIcon(icon_Copy)
 export const Cpu = createIcon(icon_Cpu)
 export const Database = createIcon(icon_Database)
 export const DatabaseZap = createIcon(icon_DatabaseZap)

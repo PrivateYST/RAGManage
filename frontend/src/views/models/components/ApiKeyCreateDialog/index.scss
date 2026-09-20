@@ -1,0 +1,11 @@
+/* API Key 创建弹窗沿用后台统一的紧凑表单和 8px 面板圆角。 */
+.api-key-dialog-backdrop { position: fixed; z-index: 50; display: grid; background: rgb(24 20 32 / 48%); inset: 0; place-items: center; }
+.api-key-dialog { width: min(480px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); box-shadow: 0 18px 48px rgb(40 36 58 / 18%); }
+.api-key-dialog-header, .api-key-dialog-heading, .api-key-dialog-actions { display: flex; align-items: center; }
+.api-key-dialog-header { justify-content: space-between; gap: 16px; }
+.api-key-dialog-heading { gap: 9px; }.api-key-dialog-heading h2 { margin: 1px 0 0; font-size: 18px; }
+.api-key-dialog-description { margin: 12px 0 16px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.api-key-form { display: flex; flex-direction: column; gap: 14px; }.api-key-form label { display: flex; flex-direction: column; gap: 6px; color: var(--foreground); font-size: 12px; font-weight: 600; }
+.api-key-form input, .api-key-form select { height: 36px; padding: 0 11px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); font: inherit; font-weight: 400; }
+.api-key-form small { color: var(--muted); font-size: 10px; font-weight: 400; }.api-key-field-error { margin: 0; color: var(--destructive); font-size: 12px; }
+.api-key-dialog-actions { justify-content: flex-end; gap: 8px; padding-top: 4px; }.icon-button { display: grid; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); place-items: center; }

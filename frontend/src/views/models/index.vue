@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Activity, Cpu, Plus, RefreshCw, Settings2 } from '@/components'
+import { Activity, Cpu, KeyRound, Plus, RefreshCw, Settings2 } from '@/components'
+import ApiKeyManager from './components/ApiKeyManager/index.vue'
 import EmbeddingProfiles from './components/EmbeddingProfiles/index.vue'
 import EndpointFormDialog from './components/EndpointFormDialog/index.vue'
 import EndpointTable from './components/EndpointTable/index.vue'
@@ -45,11 +46,11 @@ const {
         </p>
         <h1>模型与运行配置</h1>
         <p class="page-description">
-          统一管理网关端点、模型白名单、真实连通性检查和知识库不可变 Profile。
+          统一管理模型端点、知识库 Profile，以及公司向客户下发的限额 API Key。
         </p>
       </div>
       <div class="model-page-actions">
-        <button class="secondary-button" type="button" :disabled="loading" @click="loadPage">
+        <button v-if="view !== 'api-keys'" class="secondary-button" type="button" :disabled="loading" @click="loadPage">
           <RefreshCw :size="14" />刷新
         </button><button
           v-if="canManageEndpoints && view === 'endpoints'"
@@ -88,6 +89,14 @@ const {
       <button type="button" :class="{ active: view === 'profiles' }" @click="view = 'profiles'">
         <Settings2 :size="14" />知识库 Profile
       </button>
+      <button
+        v-if="canManageEndpoints"
+        type="button"
+        :class="{ active: view === 'api-keys' }"
+        @click="view = 'api-keys'"
+      >
+        <KeyRound :size="14" />API Key
+      </button>
     </nav>
 
     <EndpointTable
@@ -100,7 +109,7 @@ const {
       @check="runHealthCheck"
     />
 
-    <template v-else>
+    <template v-else-if="view === 'profiles'">
       <div class="profile-context">
         <div>
           <strong>配置对象</strong><small>Profile 归属当前空间中的单个知识库，跨空间不可见。</small>
@@ -136,6 +145,8 @@ const {
         }}</strong>
       </section>
     </template>
+
+    <ApiKeyManager v-else-if="canManageEndpoints" />
 
     <EndpointFormDialog
       :open="endpointDialogOpen"

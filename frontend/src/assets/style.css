@@ -16,6 +16,13 @@
   --muted: #71717a;
   --panel: #fff;
   --primary: #18181b;
+  --background: #fff;
+  --card: #fff;
+  --foreground: #28243a;
+  --secondary: #f4f4f5;
+  --destructive: #b91c1c;
+  --destructive-foreground: #fff;
+  --status-up: #16804b;
 }
 * {
   box-sizing: border-box;

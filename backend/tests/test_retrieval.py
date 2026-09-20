@@ -1,3 +1,5 @@
+"""检索范围、证据组装和查询嵌入用量的回归测试。"""
+
 import asyncio
 from typing import Any
 from unittest.mock import AsyncMock
@@ -23,9 +25,19 @@ class FakeGateway:
         assert model_name == "qwen3-embedding:0.6b"
         return "revision-1"
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed_with_usage(self, texts: list[str]) -> dict[str, object]:
+        """模拟网关同时返回向量和真实输入 Token。"""
         assert texts == ["如何办理出院？"]
-        return [[1.0, 0.0, 0.0]]
+        return {
+            "embeddings": [[1.0, 0.0, 0.0]],
+            "model_name": "qwen3-embedding:0.6b",
+            "usage": {
+                "prompt_tokens": 6,
+                "completion_tokens": 0,
+                "total_tokens": 6,
+                "usage_source": "gateway",
+            },
+        }
 
 
 class FakeRetrievalConnection:
@@ -156,12 +168,18 @@ def test_lexical_terms_extracts_chinese_terms_and_latin_model_names() -> None:
 
 
 def test_vector_search_scopes_current_release_and_persists_trace() -> None:
+    """成功检索必须先上报嵌入估算，再以网关真实 usage 覆盖并持久化 trace。"""
     connection = FakeRetrievalConnection()
     settings = Settings(
         model_gateway_base_url="http://gateway.test",
         embedding_model="qwen3-embedding:0.6b",
         embedding_dimensions=3,
     )
+    observed_usage: list[dict[str, Any]] = []
+
+    async def observe_usage(usage: dict[str, Any], model_name: str) -> None:
+        """记录嵌入调用前后的可恢复用量快照。"""
+        observed_usage.append({"model": model_name, **usage})
 
     result = asyncio.run(
         execute_vector_search(
@@ -175,10 +193,15 @@ def test_vector_search_scopes_current_release_and_persists_trace() -> None:
             top_k=10,
             context_max_chars=2000,
             gateway=FakeGateway(),  # type: ignore[arg-type]
+            on_embedding_usage=observe_usage,
         )
     )
 
     assert result["state"] == "completed"
+    assert result["embedding_usage"]["prompt_tokens"] == 6
+    assert [item["usage_source"] for item in observed_usage] == ["estimate", "gateway"]
+    assert observed_usage[0]["prompt_tokens"] == len("如何办理出院？".encode())
+    assert observed_usage[1]["prompt_tokens"] == 6
     assert result["trace_id"] == "31"
     assert len(result["items"]) == 1
     assert result["items"][0]["document_title"] == "住院服务指南.md"

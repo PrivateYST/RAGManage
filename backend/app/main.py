@@ -4,6 +4,7 @@ import hashlib
 import json
 import secrets
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, cast
 from urllib.parse import urlparse
@@ -16,10 +17,12 @@ from fastapi import FastAPI, File, HTTPException, Query, Request, Response, Uplo
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.api_keys import generate_api_key
 from app.core.audit import write_audit_event
 from app.core.auth import (
     SESSION_COOKIE,
     authenticate,
+    load_user_from_api_key,
     load_user_from_token,
     password_hasher,
     revoke_token,
@@ -39,6 +42,8 @@ ALLOWED_DOCUMENT_TYPES = {
     ".pdf": "application/pdf",
 }
 MAX_DOCUMENT_SIZE = 50 * 1024 * 1024
+# 管理页只加载最近流水，累计值始终由数据库对全部记录聚合。
+API_KEY_USAGE_RECENT_LIMIT = 200
 
 
 class TenantCreate(BaseModel):
@@ -213,6 +218,35 @@ class ModelHealthCheckRequest(BaseModel):
     model_name: str = Field(min_length=1, max_length=160)
 
 
+class ApiKeyCreate(BaseModel):
+    """平台管理员为客户创建公司下发的访问 Key。"""
+
+    tenant_id: int
+    name: str = Field(min_length=2, max_length=120)
+    token_limit: int = Field(gt=0, le=10_000_000_000)
+    expires_at: datetime | None = None
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        """拒绝只含空白的显示名称，并统一持久化前后空格。"""
+        normalized = value.strip()
+        if len(normalized) < 2:
+            raise ValueError("API Key 名称至少需要 2 个字符")
+        return normalized
+
+    @field_validator("expires_at")
+    @classmethod
+    def validate_expiry(cls, value: datetime | None) -> datetime | None:
+        """Key 只能设置未来有效期，避免创建后立即不可用。"""
+        if value is None:
+            return None
+        normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+        if normalized <= datetime.now(UTC):
+            raise ValueError("有效期必须晚于当前时间")
+        return normalized
+
+
 class IngestionProfileCreate(BaseModel):
     knowledge_base_id: int
     max_chars: int = Field(default=1800, ge=400, le=8000)
@@ -249,10 +283,32 @@ class RuntimeProfileCreate(BaseModel):
 
 
 async def _authenticated_user(settings: Settings, request: Request) -> dict[str, Any]:
-    context = await load_user_from_token(settings, request.cookies.get(SESSION_COOKIE))
+    """解析调用身份；显式 Bearer 一旦出现就不得回退到权限更高的 Cookie。"""
+    authorization = request.headers.get("authorization", "")
+    scheme, _, raw_key = authorization.partition(" ")
+    if scheme.lower() == "bearer":
+        context = await load_user_from_api_key(settings, raw_key.strip())
+    else:
+        context = await load_user_from_token(settings, request.cookies.get(SESSION_COOKIE))
     if context is None:
-        raise HTTPException(status_code=401, detail="未登录")
+        raise HTTPException(status_code=401, detail="未登录或 API Key 无效")
+    if context.get("api_key_id") and not _api_key_route_allowed(request):
+        raise HTTPException(status_code=403, detail="API Key 只能调用知识问答接口")
     return context
+
+
+def _api_key_route_allowed(request: Request) -> bool:
+    """限制公司 API Key 的接口面，防止它继承后台管理和配置能力。"""
+    path = request.url.path
+    if path == "/api/v1/knowledge-bases":
+        return request.method == "GET"
+    if path == "/api/v1/conversations":
+        return request.method in {"GET", "POST"}
+    if path.startswith("/api/v1/conversations/"):
+        return request.method in {"GET", "POST"}
+    if path.startswith("/api/v1/runs/"):
+        return request.method in {"GET", "POST"}
+    return False
 
 
 async def _database(settings: Settings) -> asyncpg.Connection:
@@ -262,6 +318,12 @@ async def _database(settings: Settings) -> asyncpg.Connection:
         return await asyncpg.connect(settings.database_url, timeout=5)
     except (OSError, asyncpg.PostgresError) as error:
         raise HTTPException(status_code=503, detail="数据库暂不可用") from error
+
+
+def _require_platform_admin(context: dict[str, Any]) -> None:
+    """仅允许浏览器登录的平台管理员管理系统凭据，禁止 API Key 提权。"""
+    if context["user"]["platform_role"] != "platform_admin" or "api_key_id" in context:
+        raise HTTPException(status_code=403, detail="只有超级管理员可以管理公司 API Key")
 
 
 async def _ensure_embedding_profile(
@@ -427,6 +489,22 @@ async def _knowledge_base_access(
     knowledge_base_id: int,
 ) -> asyncpg.Record:
     """返回当前用户对知识库的授权信息；未授权统一隐藏资源是否存在。"""
+    if context.get("api_key_tenant_id"):
+        row = await connection.fetchrow(
+            """
+            SELECT kb.id, kb.tenant_id, kb.name, kb.status, kb.active_release_id,
+                   'customer_reader' AS tenant_role, NULL::text AS knowledge_base_role
+            FROM knowledge_bases kb
+            JOIN tenants t ON t.id = kb.tenant_id AND t.status = 'active'
+            WHERE kb.id = $1 AND kb.tenant_id = $2 AND kb.status <> 'disabled'
+              AND kb.active_release_id IS NOT NULL
+            """,
+            knowledge_base_id,
+            int(context["api_key_tenant_id"]),
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        return row
     row = await connection.fetchrow(
         """
         SELECT kb.id, kb.tenant_id, kb.name, kb.status, kb.active_release_id,
@@ -469,6 +547,29 @@ async def _conversation_access(
     conversation_id: int,
 ) -> asyncpg.Record:
     """只允许会话所有者在仍具备知识库权限时访问会话。"""
+    if context.get("api_key_tenant_id"):
+        row = await connection.fetchrow(
+            """
+            SELECT conversation.id, conversation.tenant_id, conversation.knowledge_base_id,
+                   conversation.owner_user_id, conversation.title, conversation.status,
+                   kb.name AS knowledge_base_name, kb.active_release_id, kb.active_runtime_id
+            FROM conversations conversation
+            JOIN knowledge_bases kb ON kb.id = conversation.knowledge_base_id
+              AND kb.tenant_id = conversation.tenant_id AND kb.status <> 'disabled'
+            JOIN tenants tenant ON tenant.id = conversation.tenant_id
+              AND tenant.status = 'active'
+            WHERE conversation.id = $1
+              AND conversation.owner_user_id = $2
+              AND conversation.tenant_id = $3
+              AND conversation.status = 'active'
+            """,
+            conversation_id,
+            int(context["user"]["id"]),
+            int(context["api_key_tenant_id"]),
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        return row
     row = await connection.fetchrow(
         """
         SELECT conversation.id, conversation.tenant_id, conversation.knowledge_base_id,
@@ -504,12 +605,42 @@ async def _create_generation_run(
     request_id: UUID,
     question: str,
     user_message_id: int | None = None,
+    api_key_id: str | None = None,
 ) -> dict[str, Any]:
+    """创建幂等问答运行，并把客户调用固定绑定到发起请求的 API Key。"""
+    if api_key_id is not None:
+        # 同一 Key/request_id 的并发创建在查询前串行化，避免两边都创建消息后才撞唯一索引。
+        await connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            f"api-key-run:{api_key_id}:{request_id}",
+        )
+        existing_for_key = await connection.fetchrow(
+            """
+            SELECT id::text, tenant_id::text, knowledge_base_id::text,
+                   conversation_id::text, user_message_id::text, assistant_message_id::text,
+                   release_id::text, api_key_id::text, request_id::text,
+                   state, outcome, cancel_requested,
+                   error, created_at, updated_at
+            FROM generation_runs
+            WHERE api_key_id = $1 AND request_id = $2
+            """,
+            int(api_key_id),
+            request_id,
+        )
+        if existing_for_key is not None:
+            if int(existing_for_key["conversation_id"]) != int(conversation["id"]):
+                raise HTTPException(
+                    status_code=409,
+                    detail="request_id 已由该 API Key 的其他会话使用",
+                )
+            return dict(existing_for_key)
+
     existing = await connection.fetchrow(
         """
         SELECT id::text, tenant_id::text, knowledge_base_id::text,
                conversation_id::text, user_message_id::text, assistant_message_id::text,
-               release_id::text, request_id::text, state, outcome, cancel_requested,
+               release_id::text, api_key_id::text, request_id::text,
+               state, outcome, cancel_requested,
                error, created_at, updated_at
         FROM generation_runs
         WHERE tenant_id = $1 AND conversation_id = $2 AND request_id = $3
@@ -519,6 +650,9 @@ async def _create_generation_run(
         request_id,
     )
     if existing is not None:
+        existing_key_id = str(existing["api_key_id"]) if existing.get("api_key_id") else None
+        if existing_key_id != api_key_id:
+            raise HTTPException(status_code=409, detail="request_id 已由其他调用身份使用")
         return dict(existing)
 
     if user_message_id is None:
@@ -557,11 +691,12 @@ async def _create_generation_run(
         """
         INSERT INTO generation_runs(
           tenant_id, knowledge_base_id, conversation_id, user_message_id,
-          assistant_message_id, release_id, request_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          assistant_message_id, release_id, request_id, api_key_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id::text, tenant_id::text, knowledge_base_id::text,
                   conversation_id::text, user_message_id::text, assistant_message_id::text,
-                  release_id::text, request_id::text, state, outcome, cancel_requested,
+                  release_id::text, api_key_id::text, request_id::text,
+                  state, outcome, cancel_requested,
                   error, created_at, updated_at
         """,
         conversation["tenant_id"],
@@ -571,6 +706,7 @@ async def _create_generation_run(
         assistant_message_id,
         conversation["active_release_id"],
         request_id,
+        int(api_key_id) if api_key_id is not None else None,
     )
     if conversation["title"] == "新会话":
         await connection.execute(
@@ -966,6 +1102,168 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ),
                 )
             response.delete_cookie(SESSION_COOKIE)
+        finally:
+            await connection.close()
+
+    @app.get("/api/v1/api-keys")
+    async def list_api_keys(request: Request) -> dict[str, Any]:
+        """列出公司发放的 Key 及输入/输出/总额度，不返回明文 Key。"""
+        context = await _authenticated_user(config, request)
+        _require_platform_admin(context)
+        connection = await _database(config)
+        try:
+            rows = await connection.fetch(
+                """
+                SELECT ak.id::text, ak.tenant_id::text, t.name AS tenant_name,
+                       ak.name, ak.key_prefix, ak.token_limit, ak.token_used,
+                       ak.token_reserved,
+                       GREATEST(0, ak.token_limit - ak.token_used - ak.token_reserved)
+                         AS token_remaining,
+                       CASE WHEN ak.status = 'active' AND ak.expires_at IS NOT NULL
+                                  AND ak.expires_at <= now()
+                            THEN 'expired' ELSE ak.status END AS status,
+                       COALESCE(usage_totals.prompt_tokens, 0)::bigint AS prompt_tokens,
+                       COALESCE(usage_totals.completion_tokens, 0)::bigint
+                         AS completion_tokens,
+                       ak.expires_at, ak.last_used_at, ak.created_at, ak.revoked_at
+                FROM api_keys ak
+                JOIN tenants t ON t.id = ak.tenant_id
+                LEFT JOIN LATERAL (
+                  SELECT sum(usage.prompt_tokens) AS prompt_tokens,
+                         sum(usage.completion_tokens) AS completion_tokens
+                  FROM api_key_usage usage WHERE usage.api_key_id = ak.id
+                ) usage_totals ON true
+                ORDER BY ak.created_at DESC, ak.id DESC
+                """
+            )
+            return {"items": [dict(row) for row in rows]}
+        finally:
+            await connection.close()
+
+    @app.post("/api/v1/api-keys", status_code=201)
+    async def create_api_key(payload: ApiKeyCreate, request: Request) -> dict[str, Any]:
+        """由超级管理员创建一次性展示的公司 API Key。"""
+        context = await _authenticated_user(config, request)
+        _require_platform_admin(context)
+        connection = await _database(config)
+        raw_key, key_prefix, key_hash = generate_api_key()
+        try:
+            async with connection.transaction():
+                tenant_name = await connection.fetchval(
+                    "SELECT name FROM tenants WHERE id = $1 AND status = 'active'",
+                    payload.tenant_id,
+                )
+                if tenant_name is None:
+                    raise HTTPException(status_code=404, detail="客户空间不存在或已停用")
+                row = await connection.fetchrow(
+                    """
+                    INSERT INTO api_keys(
+                      tenant_id, name, key_prefix, key_hash, token_limit, expires_at, created_by
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING id::text, tenant_id::text, name, key_prefix, token_limit,
+                              token_used, token_reserved, expires_at, created_at
+                    """,
+                    payload.tenant_id,
+                    payload.name,
+                    key_prefix,
+                    key_hash,
+                    payload.token_limit,
+                    payload.expires_at,
+                    int(context["user"]["id"]),
+                )
+                if row is None:
+                    raise HTTPException(status_code=500, detail="API Key 创建失败")
+                await write_audit_event(
+                    connection,
+                    tenant_id=payload.tenant_id,
+                    actor_id=int(context["user"]["id"]),
+                    action="api_key.create",
+                    target_type="api_key",
+                    target_id=row["id"],
+                    summary={"name": payload.name, "token_limit": payload.token_limit},
+                )
+            return {
+                **dict(row),
+                "tenant_name": tenant_name,
+                "token_remaining": payload.token_limit,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "last_used_at": None,
+                "revoked_at": None,
+                "status": "active",
+                "raw_key": raw_key,
+            }
+        finally:
+            await connection.close()
+
+    @app.post("/api/v1/api-keys/{api_key_id}/revoke")
+    async def revoke_api_key(api_key_id: int, request: Request) -> dict[str, Any]:
+        """撤销公司 API Key；撤销后已发放的明文 Key 立即失效。"""
+        context = await _authenticated_user(config, request)
+        _require_platform_admin(context)
+        connection = await _database(config)
+        try:
+            async with connection.transaction():
+                row = await connection.fetchrow(
+                    """
+                    UPDATE api_keys SET status = 'revoked', revoked_at = now()
+                    WHERE id = $1 AND status = 'active'
+                    RETURNING id::text, tenant_id::text, name, status, revoked_at
+                    """,
+                    api_key_id,
+                )
+                if row is None:
+                    raise HTTPException(status_code=404, detail="可撤销的 API Key 不存在")
+                await write_audit_event(
+                    connection,
+                    tenant_id=int(row["tenant_id"]),
+                    actor_id=int(context["user"]["id"]),
+                    action="api_key.revoke",
+                    target_type="api_key",
+                    target_id=row["id"],
+                    summary={"name": row["name"]},
+                )
+            return dict(row)
+        finally:
+            await connection.close()
+
+    @app.get("/api/v1/api-keys/{api_key_id}/usage")
+    async def list_api_key_usage(api_key_id: int, request: Request) -> dict[str, Any]:
+        """返回某个公司 API Key 的输入、输出、总 Token 用量流水。"""
+        context = await _authenticated_user(config, request)
+        _require_platform_admin(context)
+        connection = await _database(config)
+        try:
+            summary = await connection.fetchrow(
+                """
+                SELECT count(usage.id)::int AS request_count,
+                       COALESCE(sum(usage.prompt_tokens), 0)::bigint AS prompt_tokens,
+                       COALESCE(sum(usage.completion_tokens), 0)::bigint AS completion_tokens,
+                       COALESCE(sum(usage.total_tokens), 0)::bigint AS total_tokens
+                FROM api_keys key
+                LEFT JOIN api_key_usage usage ON usage.api_key_id = key.id
+                WHERE key.id = $1
+                GROUP BY key.id
+                """,
+                api_key_id,
+            )
+            if summary is None:
+                raise HTTPException(status_code=404, detail="API Key 不存在")
+            rows = await connection.fetch(
+                """
+                SELECT request_id::text, model_name, prompt_tokens, completion_tokens,
+                       total_tokens, usage_source, model_usage, status,
+                       created_at, completed_at
+                FROM api_key_usage WHERE api_key_id = $1
+                ORDER BY created_at DESC LIMIT 200
+                """,
+                api_key_id,
+            )
+            return {
+                "summary": dict(summary),
+                "recent_limit": API_KEY_USAGE_RECENT_LIMIT,
+                "items": [dict(row) for row in rows],
+            }
         finally:
             await connection.close()
 
@@ -2091,13 +2389,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         context = await _authenticated_user(config, request)
         connection = await _database(config)
         try:
-            if tenant_id is None:
+            api_key_tenant_id = context.get("api_key_tenant_id")
+            if api_key_tenant_id is not None:
+                if tenant_id is not None and tenant_id != int(api_key_tenant_id):
+                    raise HTTPException(status_code=404, detail="客户空间不存在")
+                tenant_ids = [int(api_key_tenant_id)]
+            elif tenant_id is None:
                 tenant_ids = [int(space["id"]) for space in context["spaces"]]
             else:
                 await _assert_tenant_access(connection, context, tenant_id)
                 tenant_ids = [tenant_id]
             if not tenant_ids:
                 return {"items": []}
+            if api_key_tenant_id is not None:
+                rows = await connection.fetch(
+                    """
+                    SELECT kb.id::text, kb.tenant_id::text, kb.name, kb.description,
+                           kb.purpose, kb.status, kb.active_release_id::text, kb.updated_at,
+                           count(DISTINCT d.id)::int AS document_count
+                    FROM knowledge_bases kb
+                    JOIN tenants tenant ON tenant.id = kb.tenant_id AND tenant.status = 'active'
+                    LEFT JOIN documents d
+                      ON d.tenant_id = kb.tenant_id AND d.knowledge_base_id = kb.id
+                     AND d.status <> 'deleted'
+                    WHERE kb.tenant_id = $1 AND kb.status <> 'disabled'
+                      AND kb.active_release_id IS NOT NULL
+                    GROUP BY kb.id ORDER BY kb.updated_at DESC
+                    """,
+                    int(api_key_tenant_id),
+                )
+                return {"items": _rows(rows)}
             rows = await connection.fetch(
                 """
                 SELECT kb.id::text, kb.tenant_id::text, kb.name, kb.description, kb.purpose,
@@ -3451,6 +3772,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         connection,
                         run_id=int(item["run_id"]),
                         user_id=int(context["user"]["id"]),
+                        api_key_tenant_id=context.get("api_key_tenant_id"),
+                        api_key_id=context.get("api_key_id"),
                     )
                     if snapshot is not None:
                         item["content"] = snapshot["answer"]
@@ -3496,6 +3819,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     user_id=int(context["user"]["id"]),
                     request_id=payload.request_id,
                     question=payload.question,
+                    api_key_id=context.get("api_key_id"),
                 )
         finally:
             await connection.close()
@@ -3509,6 +3833,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 connection,
                 run_id=run_id,
                 user_id=int(context["user"]["id"]),
+                api_key_tenant_id=context.get("api_key_tenant_id"),
+                api_key_id=context.get("api_key_id"),
             )
             if snapshot is None:
                 raise HTTPException(status_code=404, detail="问答运行不存在")
@@ -3524,6 +3850,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 config,
                 run_id=run_id,
                 user_id=int(context["user"]["id"]),
+                api_key_id=context.get("api_key_id"),
+                api_key_tenant_id=context.get("api_key_tenant_id"),
             ),
             media_type="text/event-stream",
             headers={
@@ -3541,42 +3869,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 connection,
                 run_id=run_id,
                 user_id=int(context["user"]["id"]),
+                api_key_tenant_id=context.get("api_key_tenant_id"),
+                api_key_id=context.get("api_key_id"),
             )
             if snapshot is None:
                 raise HTTPException(status_code=404, detail="问答运行不存在")
             if snapshot["state"] in {"completed", "failed", "cancelled"}:
                 return snapshot
             async with connection.transaction():
-                await connection.execute(
-                    """
-                    UPDATE retrieval_traces SET state = 'cancelled'
-                    WHERE tenant_id = $1 AND message_id = $2 AND state = 'running'
-                    """,
-                    int(snapshot["tenant_id"]),
-                    int(snapshot["assistant_message_id"]),
-                )
-                await connection.execute(
+                cancelled_run_id = await connection.fetchval(
                     """
                     UPDATE generation_runs SET cancel_requested = true,
                         state = 'cancelled', completed_at = now(),
                         updated_at = now()
                     WHERE id = $1 AND tenant_id = $2 AND state IN ('queued','running')
+                    RETURNING id
                     """,
                     run_id,
                     int(snapshot["tenant_id"]),
                 )
-                await connection.execute(
-                    """
-                    UPDATE messages SET state = 'cancelled'
-                    WHERE id = $1 AND tenant_id = $2
-                    """,
-                    int(snapshot["assistant_message_id"]),
-                    int(snapshot["tenant_id"]),
-                )
+                if cancelled_run_id is not None:
+                    await connection.execute(
+                        """
+                        UPDATE retrieval_traces SET state = 'cancelled'
+                        WHERE tenant_id = $1 AND message_id = $2 AND state = 'running'
+                        """,
+                        int(snapshot["tenant_id"]),
+                        int(snapshot["assistant_message_id"]),
+                    )
+                    await connection.execute(
+                        """
+                        UPDATE messages SET state = 'cancelled'
+                        WHERE id = $1 AND tenant_id = $2
+                        """,
+                        int(snapshot["assistant_message_id"]),
+                        int(snapshot["tenant_id"]),
+                    )
             latest = await load_run_snapshot(
                 connection,
                 run_id=run_id,
                 user_id=int(context["user"]["id"]),
+                api_key_tenant_id=context.get("api_key_tenant_id"),
+                api_key_id=context.get("api_key_id"),
             )
             if latest is None:
                 raise HTTPException(status_code=404, detail="问答运行不存在")
@@ -3597,6 +3931,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 connection,
                 run_id=run_id,
                 user_id=int(context["user"]["id"]),
+                api_key_tenant_id=context.get("api_key_tenant_id"),
+                api_key_id=context.get("api_key_id"),
             )
             if snapshot is None:
                 raise HTTPException(status_code=404, detail="问答运行不存在")
@@ -3615,6 +3951,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     request_id=payload.request_id,
                     question=str(snapshot["question"]),
                     user_message_id=int(snapshot["user_message_id"]),
+                    api_key_id=context.get("api_key_id"),
                 )
         finally:
             await connection.close()
