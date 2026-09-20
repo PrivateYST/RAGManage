@@ -6,16 +6,15 @@ on:
   workflow_dispatch:
 
 env:
-  # GitHub Container Registry for this GitHub repository.
-  REGISTRY: ghcr.io
-  IMAGE_NAMESPACE: privateyst/ragmanage
+  # The self-hosted runner deploys to its own Docker daemon, so images stay local.
+  REGISTRY: local
+  IMAGE_NAMESPACE: ragmanage
 
 jobs:
   deploy:
     runs-on: [self-hosted, Windows]
     permissions:
       contents: read
-      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -23,10 +22,6 @@ jobs:
       - name: Deploy on the Windows runner
         shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Use a PAT with read/write:packages when the GHCR package is not linked to this repository.
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
           IMAGE_REGISTRY: ${{ env.REGISTRY }}
           IMAGE_NAMESPACE: ${{ env.IMAGE_NAMESPACE }}
           IMAGE_TAG: ${{ github.sha }}
@@ -50,15 +45,9 @@ jobs:
           # Validate interpolation before any build or migration so missing deployment settings are reported early.
           docker compose --env-file $serverEnv -f infra\compose\prod.yaml config --quiet
           if ($LASTEXITCODE -ne 0) { throw 'Production Compose configuration is invalid.' }
-          $env:GHCR_TOKEN | docker login ghcr.io --username $env:GHCR_USERNAME --password-stdin
-          if ($LASTEXITCODE -ne 0) {
-            throw 'GHCR login failed. Set repository secret GHCR_TOKEN to a token with read:packages and write:packages, and grant the package access to this repository.'
-          }
           docker build --tag "$env:IMAGE_REGISTRY/$env:IMAGE_NAMESPACE/api:$env:IMAGE_TAG" --file backend/Dockerfile backend
-          docker push "$env:IMAGE_REGISTRY/$env:IMAGE_NAMESPACE/api:$env:IMAGE_TAG"
           docker build --tag "$env:IMAGE_REGISTRY/$env:IMAGE_NAMESPACE/frontend:$env:IMAGE_TAG" --file frontend/Dockerfile .
-          docker push "$env:IMAGE_REGISTRY/$env:IMAGE_NAMESPACE/frontend:$env:IMAGE_TAG"
-          docker compose --env-file $serverEnv -f infra\compose\prod.yaml pull
+          # The exact tags above are consumed from this runner's local Docker daemon.
           docker compose --env-file $serverEnv -f infra\compose\prod.yaml run --rm api alembic upgrade head
           docker compose --env-file $serverEnv -f infra\compose\prod.yaml up -d --remove-orphans
           Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8081/api/v1/health/ready' -TimeoutSec 30 | Out-Null
