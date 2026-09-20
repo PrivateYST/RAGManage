@@ -39,5 +39,14 @@ describe('api key table', () => {
     expect(cells[6]?.find('.api-key-action-list').exists()).toBe(true)
     expect(cells[1]?.classes()).not.toContain('api-key-prefix-content')
     expect(cells[6]?.classes()).not.toContain('api-key-action-list')
+    expect(cells.map(cell => cell.attributes('data-label'))).toEqual([
+      '客户 / 名称',
+      'API Key',
+      '状态',
+      '额度（总 / 已用 / 剩余）',
+      '输入 / 输出',
+      '最后使用',
+      '操作',
+    ])
   })
 })

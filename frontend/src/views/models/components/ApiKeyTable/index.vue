@@ -41,23 +41,27 @@ const emit = defineEmits<{
             </td>
           </tr>
           <tr v-for="item in items" v-else :key="item.id">
-            <td><strong>{{ item.tenant_name }}</strong><small>{{ item.name }}</small></td>
-            <td>
+            <td data-label="客户 / 名称">
+              <strong>{{ item.tenant_name }}</strong><small>{{ item.name }}</small>
+            </td>
+            <td data-label="API Key">
               <span class="api-key-prefix-content">
                 <KeyRound :size="13" />{{ item.key_prefix }}
               </span>
             </td>
-            <td><span class="api-key-status" :class="item.status">{{ apiKeyStatusLabel[item.status] }}</span></td>
-            <td class="api-key-numeric">
+            <td data-label="状态">
+              <span class="api-key-status" :class="item.status">{{ apiKeyStatusLabel[item.status] }}</span>
+            </td>
+            <td class="api-key-numeric" data-label="额度（总 / 已用 / 剩余）">
               <strong>{{ item.token_limit.toLocaleString() }}</strong><small>{{ item.token_used.toLocaleString() }} / {{ item.token_remaining.toLocaleString() }}</small>
             </td>
-            <td class="api-key-numeric">
+            <td class="api-key-numeric" data-label="输入 / 输出">
               <strong>{{ item.prompt_tokens.toLocaleString() }}</strong><small>{{ item.completion_tokens.toLocaleString() }}</small>
             </td>
-            <td class="api-key-last-used">
+            <td class="api-key-last-used" data-label="最后使用">
               {{ formatApiKeyDate(item.last_used_at) }}
             </td>
-            <td>
+            <td class="api-key-action-cell" data-label="操作">
               <div class="api-key-action-list">
                 <button type="button" title="查看用量" @click="emit('usage', item)">
                   <History :size="13" />用量
