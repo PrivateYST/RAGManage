@@ -19,7 +19,16 @@ const emit = defineEmits<{
       <div><strong>公司下发的 API Key</strong><small>客户只能使用公司下发的 Bearer Key，不能自行创建或管理。</small></div><span>共 {{ items.length }} 个</span>
     </header>
     <div class="api-key-table-wrap">
-      <table>
+      <table class="api-key-summary-table">
+        <colgroup>
+          <col class="api-key-col-client">
+          <col class="api-key-col-key">
+          <col class="api-key-col-status">
+          <col class="api-key-col-quota">
+          <col class="api-key-col-usage">
+          <col class="api-key-col-last-used">
+          <col class="api-key-col-actions">
+        </colgroup>
         <thead><tr><th>客户 / 名称</th><th>API Key</th><th>状态</th><th>额度（总 / 已用 / 剩余）</th><th>输入 / 输出</th><th>最后使用</th><th>操作</th></tr></thead><tbody>
           <tr v-if="loading">
             <td colspan="7" class="api-key-empty">
@@ -33,19 +42,29 @@ const emit = defineEmits<{
           </tr>
           <tr v-for="item in items" v-else :key="item.id">
             <td><strong>{{ item.tenant_name }}</strong><small>{{ item.name }}</small></td>
-            <td class="api-key-prefix">
-              <KeyRound :size="13" />{{ item.key_prefix }}
+            <td>
+              <span class="api-key-prefix-content">
+                <KeyRound :size="13" />{{ item.key_prefix }}
+              </span>
             </td>
             <td><span class="api-key-status" :class="item.status">{{ apiKeyStatusLabel[item.status] }}</span></td>
-            <td><strong>{{ item.token_limit.toLocaleString() }}</strong><small>{{ item.token_used.toLocaleString() }} / {{ item.token_remaining.toLocaleString() }}</small></td>
-            <td><strong>{{ item.prompt_tokens.toLocaleString() }}</strong><small>{{ item.completion_tokens.toLocaleString() }}</small></td>
-            <td>{{ formatApiKeyDate(item.last_used_at) }}</td>
-            <td class="api-key-actions">
-              <button type="button" title="查看用量" @click="emit('usage', item)">
-                <History :size="13" />用量
-              </button><button type="button" title="撤销 Key" :disabled="item.status !== 'active' || busyId === item.id" @click="emit('revoke', item)">
-                <Ban :size="13" />撤销
-              </button>
+            <td class="api-key-numeric">
+              <strong>{{ item.token_limit.toLocaleString() }}</strong><small>{{ item.token_used.toLocaleString() }} / {{ item.token_remaining.toLocaleString() }}</small>
+            </td>
+            <td class="api-key-numeric">
+              <strong>{{ item.prompt_tokens.toLocaleString() }}</strong><small>{{ item.completion_tokens.toLocaleString() }}</small>
+            </td>
+            <td class="api-key-last-used">
+              {{ formatApiKeyDate(item.last_used_at) }}
+            </td>
+            <td>
+              <div class="api-key-action-list">
+                <button type="button" title="查看用量" @click="emit('usage', item)">
+                  <History :size="13" />用量
+                </button><button type="button" title="撤销 Key" :disabled="item.status !== 'active' || busyId === item.id" @click="emit('revoke', item)">
+                  <Ban :size="13" />撤销
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
