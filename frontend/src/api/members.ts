@@ -51,36 +51,54 @@ export function fetchSpaceMembers(spaceId: string): Promise<{ items: SpaceMember
   return apiRequest(`/api/v1/spaces/${spaceId}/members`)
 }
 
-export function addSpaceMember(spaceId: string, payload: { login: string, role_code: SpaceRoleCode }): Promise<SpaceMember> {
+export function addSpaceMember(
+  spaceId: string,
+  payload: { login: string; role_code: SpaceRoleCode },
+): Promise<SpaceMember> {
   return apiRequest(`/api/v1/spaces/${spaceId}/members`, {
     method: 'POST',
     body: JSON.stringify(payload),
   })
 }
 
-export function updateSpaceMember(spaceId: string, userId: string, payload: { role_code?: SpaceRoleCode, status?: MembershipStatus }): Promise<SpaceMember> {
+export function updateSpaceMember(
+  spaceId: string,
+  userId: string,
+  payload: { role_code?: SpaceRoleCode; status?: MembershipStatus },
+): Promise<SpaceMember> {
   return apiRequest(`/api/v1/spaces/${spaceId}/members/${userId}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   })
 }
 
-export function fetchKnowledgeBaseMembers(knowledgeBaseId: string): Promise<{ items: KnowledgeBaseMember[] }> {
+export function fetchKnowledgeBaseMembers(
+  knowledgeBaseId: string,
+): Promise<{ items: KnowledgeBaseMember[] }> {
   return apiRequest(`/api/v1/knowledge-bases/${knowledgeBaseId}/members`)
 }
 
-export function fetchKnowledgeBaseMemberCandidates(knowledgeBaseId: string): Promise<{ items: KnowledgeBaseMemberCandidate[] }> {
+export function fetchKnowledgeBaseMemberCandidates(
+  knowledgeBaseId: string,
+): Promise<{ items: KnowledgeBaseMemberCandidate[] }> {
   return apiRequest(`/api/v1/knowledge-bases/${knowledgeBaseId}/member-candidates`)
 }
 
-export function addKnowledgeBaseMember(knowledgeBaseId: string, payload: { user_id: number, role_code: KnowledgeBaseRoleCode }): Promise<KnowledgeBaseMember> {
+export function addKnowledgeBaseMember(
+  knowledgeBaseId: string,
+  payload: { user_id: number; role_code: KnowledgeBaseRoleCode },
+): Promise<KnowledgeBaseMember> {
   return apiRequest(`/api/v1/knowledge-bases/${knowledgeBaseId}/members`, {
     method: 'POST',
     body: JSON.stringify(payload),
   })
 }
 
-export function updateKnowledgeBaseMember(knowledgeBaseId: string, userId: string, payload: { role_code?: KnowledgeBaseRoleCode, status?: MembershipStatus }): Promise<KnowledgeBaseMember> {
+export function updateKnowledgeBaseMember(
+  knowledgeBaseId: string,
+  userId: string,
+  payload: { role_code?: KnowledgeBaseRoleCode; status?: MembershipStatus },
+): Promise<KnowledgeBaseMember> {
   return apiRequest(`/api/v1/knowledge-bases/${knowledgeBaseId}/members/${userId}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),

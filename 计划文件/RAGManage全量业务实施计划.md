@@ -237,7 +237,7 @@
 - [ ] 记录角色权限变更。
 - [x] 记录上传、解析、构建、发布、回退和删除事件。
 - [x] 记录模型与 Profile 配置变更。
-- [ ] 记录管理员诊断操作。
+- [x] 记录管理员诊断操作。
 - [x] 实现审计日志查询页面。
 - [ ] API 响应统一加入 UUID request_id。
 - [ ] 列表接口统一使用 cursor 分页。
@@ -444,7 +444,17 @@
 - 模型端点：登记与更新写入平台级 `model_endpoint.create / model_endpoint.update`；更新事件保存允许审计字段的前后值，并只以布尔值记录密钥引用是否变化。
 - 不可变 Profile：Ingestion、Embedding、Runtime 创建分别记录所属知识库或端点、关联 Profile、定义哈希和 `reparse / rebuild / activate` 生效范围；重复定义复用时不重复写审计。
 - Runtime 激活：空间级 `runtime_profile.activate` 保存旧 Runtime、新 Runtime 及是否需要重新构建，便于恢复和问题追踪。
-- 敏感数据：审计不保存 API Key、密钥引用值、查询/文档指令、回答规则正文或模型响应；健康检查归入独立的管理员诊断操作待办。
+- 敏感数据：审计不保存 API Key、密钥引用值、查询/文档指令、回答规则正文或模型响应；健康检查审计见“管理员诊断操作审计”章节。
 - 前端闭环：操作日志增加解析、嵌入和运行 Profile 独立筛选，并补齐各类 Profile 创建、激活及目标类型的中文名称。
 - 自动化验证：后端 pytest 84 项通过，Ruff、Ruff format、mypy 通过；前端 Vitest 27 项通过，ESLint、Vue TypeScript 和 Vite 生产构建通过。
 - 真实环境：完成模型端点名称修改并恢复；创建空间级 Ingestion Profile；经 Open WebUI API Key 网关实测 1024 维后创建 Embedding Profile；创建并激活 Runtime Profile 后恢复原 Runtime。平台与空间日志均能按类型返回，测试指令、回答规则和密钥未进入摘要。
+
+### 2026-09-20：管理员诊断操作审计
+
+- 模型健康检查：成功、网关调用失败和不支持端点类型均写入平台级 `model_endpoint.health_check`；健康状态更新与审计事件在同一事务中提交，摘要保存模型、状态、稳定错误码、耗时和嵌入维度。
+- 检索调试：`/api/v1/search-test` 按知识库空间写入 `search_test.run`，关联 `retrieval_trace`、终态、候选数量和耗时；完成、无索引、来源无效和网关失败均保留可追踪结果。
+- 敏感数据边界：诊断审计不保存 API Key、密钥引用、完整提问、候选正文、文档内容或模型网关原始响应；平台模型日志使用 `tenant_id IS NULL`，空间检索日志只归属授权空间。
+- 前端闭环：操作日志增加“模型健康诊断”和“检索诊断”筛选，补齐 `search_test.run` 与检索 Trace 的中文展示名称。
+- 自动化验证：后端 pytest 89 项通过，Ruff、Ruff format、mypy 通过；前端 Vitest 28 项通过，ESLint、Vue TypeScript 和 Vite 生产构建通过。
+- 真实环境：重建 API 后使用临时管理员 Session 实际执行模型健康检查和空间检索调试；平台日志返回 `tenant_id = null` 的健康检查事件，空间日志返回 `tenant_id = 1` 的 `search_test.run` 和 Trace，摘要未出现查询、正文或密钥；验证结束后已退出并撤销 Session。
+- 限制：统一 UUID request_id、结构化应用日志、指标和管理 API 限流仍按原计划待完成。

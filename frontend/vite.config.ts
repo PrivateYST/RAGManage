@@ -1,9 +1,16 @@
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [vue()],
+  // 统一源码根目录别名，避免页面层级变化导致相对路径逐级增长。
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,

@@ -1,0 +1,7 @@
+# 生成目录和依赖目录不参与格式化，避免覆盖构建产物或安装缓存。
+dist
+node_modules
+
+# 产品资料与项目规范中的 Markdown 保持原文排版。
+docs
+rules

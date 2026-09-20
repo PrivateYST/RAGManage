@@ -86,7 +86,10 @@ export interface SseMessage {
   data: Record<string, unknown>
 }
 
-export function consumeSseChunk(buffer: string, chunk: string): { events: SseMessage[], rest: string } {
+export function consumeSseChunk(
+  buffer: string,
+  chunk: string,
+): { events: SseMessage[]; rest: string } {
   const combined = buffer + chunk
   const blocks = combined.split(SSE_BLOCK_SEPARATOR)
   const rest = blocks.pop() ?? ''
@@ -95,20 +98,19 @@ export function consumeSseChunk(buffer: string, chunk: string): { events: SseMes
     let event = 'message'
     const dataLines: string[] = []
     for (const line of block.split(SSE_LINE_SEPARATOR)) {
-      if (line.startsWith('event:'))
-        event = line.slice(6).trim()
-      if (line.startsWith('data:'))
-        dataLines.push(line.slice(5).trimStart())
+      if (line.startsWith('event:')) event = line.slice(6).trim()
+      if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart())
     }
-    if (!dataLines.length)
-      continue
+    if (!dataLines.length) continue
     events.push({ event, data: JSON.parse(dataLines.join('\n')) as Record<string, unknown> })
   }
   return { events, rest }
 }
 
 export function fetchConversations(knowledgeBaseId: string): Promise<{ items: ConversationRow[] }> {
-  return apiRequest(`/api/v1/conversations?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`)
+  return apiRequest(
+    `/api/v1/conversations?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`,
+  )
 }
 
 export function createConversation(knowledgeBaseId: string): Promise<ConversationRow> {
@@ -122,7 +124,11 @@ export function fetchConversation(conversationId: string): Promise<ConversationD
   return apiRequest(`/api/v1/conversations/${encodeURIComponent(conversationId)}`)
 }
 
-export function createRun(conversationId: string, question: string, requestId: string): Promise<GenerationRun> {
+export function createRun(
+  conversationId: string,
+  question: string,
+  requestId: string,
+): Promise<GenerationRun> {
   return apiRequest(`/api/v1/conversations/${encodeURIComponent(conversationId)}/runs`, {
     method: 'POST',
     body: JSON.stringify({ question, request_id: requestId }),
@@ -144,7 +150,10 @@ export function retryRun(runId: string, requestId: string): Promise<GenerationRu
   })
 }
 
-export function saveMessageFeedback(messageId: string, rating: 'helpful' | 'not_helpful'): Promise<void> {
+export function saveMessageFeedback(
+  messageId: string,
+  rating: 'helpful' | 'not_helpful',
+): Promise<void> {
   return apiRequest(`/api/v1/messages/${encodeURIComponent(messageId)}/feedback`, {
     method: 'POST',
     body: JSON.stringify({ rating }),
@@ -161,15 +170,13 @@ export async function streamRun(
     headers: { Accept: 'text/event-stream' },
     signal,
   })
-  if (!response.ok || !response.body)
-    throw new Error(`流式请求失败（${response.status}）`)
+  if (!response.ok || !response.body) throw new Error(`流式请求失败（${response.status}）`)
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
   while (true) {
     const { value, done } = await reader.read()
-    if (done)
-      break
+    if (done) break
     const parsed = consumeSseChunk(buffer, decoder.decode(value, { stream: true }))
     buffer = parsed.rest
     parsed.events.forEach(onEvent)

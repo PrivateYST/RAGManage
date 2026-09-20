@@ -3,6 +3,7 @@
 import hashlib
 import json
 import secrets
+import time
 from pathlib import Path
 from typing import Annotated, Any, cast
 from urllib.parse import urlparse
@@ -1185,61 +1186,117 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if endpoint["secret_ref"] != "env:MODEL_GATEWAY_API_KEY":
                 raise HTTPException(status_code=409, detail="端点密钥引用当前不可用")
             client = ModelGatewayClient(config)
+            # 诊断审计只保留耗时、状态和稳定错误码；探测响应与密钥永远不进入日志。
+            check_started = time.perf_counter()
             try:
                 if endpoint["endpoint_type"] == "generation":
                     probe = await client.probe_generation(endpoint["base_url"], payload.model_name)
                 elif endpoint["endpoint_type"] == "embedding":
                     probe = await client.probe_embedding(endpoint["base_url"], payload.model_name)
                 else:
+                    await connection.execute(
+                        """
+                        INSERT INTO audit_logs(
+                          tenant_id, actor_id, action, target_type, target_id, change_summary
+                        ) VALUES (
+                          NULL, $1, 'model_endpoint.health_check',
+                          'model_endpoint', $2, $3::jsonb
+                        )
+                        """,
+                        int(context["user"]["id"]),
+                        str(endpoint_id),
+                        json.dumps(
+                            {
+                                "model": payload.model_name,
+                                "status": "unsupported",
+                                "error_code": "UNSUPPORTED_ENDPOINT_TYPE",
+                                "latency_ms": round(
+                                    (time.perf_counter() - check_started) * 1000,
+                                    2,
+                                ),
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
                     raise HTTPException(status_code=422, detail="重排端点检查将在后续版本提供")
             except (httpx.HTTPError, ValueError) as error:
                 error_code = type(error).__name__
-                await connection.execute(
-                    """
-                    UPDATE model_endpoints
-                    SET health_status = 'unhealthy', last_checked_at = now(),
-                        last_error = $2, last_latency_ms = NULL,
-                        observed_dimension = NULL, updated_at = now()
-                    WHERE id = $1
-                    """,
-                    endpoint_id,
-                    error_code,
-                )
+                latency_ms = round((time.perf_counter() - check_started) * 1000, 2)
+                # 健康状态和对应审计必须原子提交，避免页面状态变化却没有操作证据。
+                async with connection.transaction():
+                    await connection.execute(
+                        """
+                        UPDATE model_endpoints
+                        SET health_status = 'unhealthy', last_checked_at = now(),
+                            last_error = $2, last_latency_ms = NULL,
+                            observed_dimension = NULL, updated_at = now()
+                        WHERE id = $1
+                        """,
+                        endpoint_id,
+                        error_code,
+                    )
+                    await connection.execute(
+                        """
+                        INSERT INTO audit_logs(
+                          tenant_id, actor_id, action, target_type, target_id, change_summary
+                        ) VALUES (
+                          NULL, $1, 'model_endpoint.health_check',
+                          'model_endpoint', $2, $3::jsonb
+                        )
+                        """,
+                        int(context["user"]["id"]),
+                        str(endpoint_id),
+                        json.dumps(
+                            {
+                                "model": payload.model_name,
+                                "status": "unhealthy",
+                                "error_code": error_code,
+                                "latency_ms": latency_ms,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
                 return {
                     "status": "unhealthy",
                     "model": payload.model_name,
                     "error": "模型调用失败，请检查地址、密钥和模型服务状态",
                 }
             observed_dimension = probe.get("dimension")
-            await connection.execute(
-                """
-                UPDATE model_endpoints
-                SET health_status = 'healthy', last_checked_at = now(),
-                    last_latency_ms = $2, last_error = NULL,
-                    observed_dimension = $3, updated_at = now()
-                WHERE id = $1
-                """,
-                endpoint_id,
-                probe["latency_ms"],
-                observed_dimension,
-            )
-            await connection.execute(
-                """
-                INSERT INTO audit_logs(
-                  actor_id, action, target_type, target_id, change_summary
-                ) VALUES ($1, 'model_endpoint.health_check', 'model_endpoint', $2, $3::jsonb)
-                """,
-                int(context["user"]["id"]),
-                str(endpoint_id),
-                json.dumps(
-                    {
-                        "model": payload.model_name,
-                        "status": "healthy",
-                        "dimension": observed_dimension,
-                    },
-                    ensure_ascii=False,
-                ),
-            )
+            # 成功状态与审计使用同一事务，且平台事件显式保持 tenant_id 为空。
+            async with connection.transaction():
+                await connection.execute(
+                    """
+                    UPDATE model_endpoints
+                    SET health_status = 'healthy', last_checked_at = now(),
+                        last_latency_ms = $2, last_error = NULL,
+                        observed_dimension = $3, updated_at = now()
+                    WHERE id = $1
+                    """,
+                    endpoint_id,
+                    probe["latency_ms"],
+                    observed_dimension,
+                )
+                await connection.execute(
+                    """
+                    INSERT INTO audit_logs(
+                      tenant_id, actor_id, action, target_type, target_id, change_summary
+                    ) VALUES (
+                      NULL, $1, 'model_endpoint.health_check',
+                      'model_endpoint', $2, $3::jsonb
+                    )
+                    """,
+                    int(context["user"]["id"]),
+                    str(endpoint_id),
+                    json.dumps(
+                        {
+                            "model": payload.model_name,
+                            "status": "healthy",
+                            "latency_ms": probe["latency_ms"],
+                            "dimension": observed_dimension,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
             return {"status": "healthy", **probe}
         finally:
             await connection.close()
@@ -3236,8 +3293,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 context,
                 payload.knowledge_base_id,
             )
+            diagnostic_started = time.perf_counter()
             try:
-                return await execute_vector_search(
+                result = await execute_vector_search(
                     connection,
                     config,
                     tenant_id=int(access["tenant_id"]),
@@ -3253,7 +3311,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     context_max_chars=payload.context_max_chars,
                 )
             except RetrievalServiceError as error:
+                # 只记录检索状态和 trace 关联信息，不记录问题正文、候选片段或模型响应。
+                trace_id = error.trace_id
+                await write_audit_event(
+                    connection,
+                    tenant_id=int(access["tenant_id"]),
+                    actor_id=int(context["user"]["id"]),
+                    action="search_test.run",
+                    target_type="retrieval_trace" if trace_id else "knowledge_base",
+                    target_id=trace_id or payload.knowledge_base_id,
+                    summary={
+                        "knowledge_base_id": str(payload.knowledge_base_id),
+                        "trace_id": str(trace_id) if trace_id else None,
+                        "state": "failed",
+                        "error_code": "RETRIEVAL_SERVICE_ERROR",
+                        "total_ms": round((time.perf_counter() - diagnostic_started) * 1000, 2),
+                    },
+                )
                 raise HTTPException(status_code=502, detail=str(error)) from error
+            trace_id = result.get("trace_id")
+            await write_audit_event(
+                connection,
+                tenant_id=int(access["tenant_id"]),
+                actor_id=int(context["user"]["id"]),
+                action="search_test.run",
+                target_type="retrieval_trace" if trace_id else "knowledge_base",
+                target_id=trace_id or payload.knowledge_base_id,
+                summary={
+                    "knowledge_base_id": str(payload.knowledge_base_id),
+                    "trace_id": trace_id,
+                    "state": str(result.get("state", "unknown")),
+                    "item_count": len(result.get("items") or []),
+                    "total_ms": (result.get("timings") or {}).get(
+                        "total_ms",
+                        round((time.perf_counter() - diagnostic_started) * 1000, 2),
+                    ),
+                },
+            )
+            return result
         finally:
             await connection.close()
 

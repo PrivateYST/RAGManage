@@ -1,6 +1,7 @@
 import { apiRequest } from './client'
 
-export type ParseStatus = 'queued' | 'processing' | 'complete' | 'partial' | 'unsupported' | 'failed'
+export type ParseStatus =
+  'queued' | 'processing' | 'complete' | 'partial' | 'unsupported' | 'failed'
 
 export interface DocumentRow {
   id: string
@@ -54,9 +55,9 @@ export interface TaskRow {
 }
 
 export interface UploadResult {
-  document: { id: string, title: string }
-  version: { id: string, version_no: number, parse_status: ParseStatus, created_at: string }
-  task: { id: string, state: TaskRow['state'], task_type: string, created_at: string }
+  document: { id: string; title: string }
+  version: { id: string; version_no: number; parse_status: ParseStatus; created_at: string }
+  task: { id: string; state: TaskRow['state']; task_type: string; created_at: string }
 }
 
 export interface ChunkRow {
@@ -69,7 +70,9 @@ export interface ChunkRow {
   artifact_state?: string
 }
 
-export function fetchDocuments(knowledgeBaseId: string): Promise<{ items: DocumentRow[], knowledge_base: { id: string, name: string } }> {
+export function fetchDocuments(
+  knowledgeBaseId: string,
+): Promise<{ items: DocumentRow[]; knowledge_base: { id: string; name: string } }> {
   return apiRequest(`/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/documents`)
 }
 
@@ -87,7 +90,7 @@ export function fetchDocument(documentId: string): Promise<DocumentDetail> {
 }
 
 export function fetchVersionPreview(versionId: string): Promise<{
-  document: { id: string, title: string }
+  document: { id: string; title: string }
   version: Pick<DocumentVersion, 'id' | 'version_no' | 'parse_status' | 'warnings'>
   chunks: ChunkRow[]
 }> {
@@ -95,24 +98,37 @@ export function fetchVersionPreview(versionId: string): Promise<{
 }
 
 export function disableDocument(documentId: string): Promise<void> {
-  return apiRequest(`/api/v1/documents/${encodeURIComponent(documentId)}/disable`, { method: 'POST' })
+  return apiRequest(`/api/v1/documents/${encodeURIComponent(documentId)}/disable`, {
+    method: 'POST',
+  })
 }
 
 export function deleteDocument(documentId: string): Promise<void> {
   return apiRequest(`/api/v1/documents/${encodeURIComponent(documentId)}`, { method: 'DELETE' })
 }
 
-export function fetchTasks(filters: { tenantId?: string, knowledgeBaseId?: string } = {}): Promise<{ items: TaskRow[] }> {
+export function fetchTasks(
+  filters: { tenantId?: string; knowledgeBaseId?: string } = {},
+): Promise<{ items: TaskRow[] }> {
   const query = new URLSearchParams()
-  if (filters.tenantId)
-    query.set('tenant_id', filters.tenantId)
-  if (filters.knowledgeBaseId)
-    query.set('knowledge_base_id', filters.knowledgeBaseId)
+  if (filters.tenantId) query.set('tenant_id', filters.tenantId)
+  if (filters.knowledgeBaseId) query.set('knowledge_base_id', filters.knowledgeBaseId)
   const suffix = query.size ? `?${query.toString()}` : ''
   return apiRequest(`/api/v1/tasks${suffix}`)
 }
 
-export function fetchTask(taskId: string): Promise<{ task: TaskRow, items: Array<{ id: string, target_id: string | null, stage: string, state: string, attempt: number, error: Record<string, unknown> | null, updated_at: string }> }> {
+export function fetchTask(taskId: string): Promise<{
+  task: TaskRow
+  items: Array<{
+    id: string
+    target_id: string | null
+    stage: string
+    state: string
+    attempt: number
+    error: Record<string, unknown> | null
+    updated_at: string
+  }>
+}> {
   return apiRequest(`/api/v1/tasks/${encodeURIComponent(taskId)}`)
 }
 

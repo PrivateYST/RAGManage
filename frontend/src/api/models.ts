@@ -27,7 +27,7 @@ export interface IngestionProfile {
   id: string
   definition: {
     parser?: string
-    chunking?: { strategy?: string, max_chars?: number, overlap_chars?: number }
+    chunking?: { strategy?: string; max_chars?: number; overlap_chars?: number }
     preserve_locator?: boolean
   }
   definition_hash: string
@@ -44,7 +44,7 @@ export interface EmbeddingProfile {
   model_revision: string
   dimension: number
   dtype: string
-  instructions: { query?: string, document?: string }
+  instructions: { query?: string; document?: string }
   normalization: string
   definition_hash: string
   created_at: string
@@ -55,8 +55,8 @@ export interface RuntimeProfile {
   id: string
   embedding_profile_id: string
   definition: {
-    retrieval?: { mode?: string, top_k?: number, context_max_chars?: number }
-    generation?: { endpoint_id?: number, model?: string, temperature?: number }
+    retrieval?: { mode?: string; top_k?: number; context_max_chars?: number }
+    generation?: { endpoint_id?: number; model?: string; temperature?: number }
     answer_rules?: string
   }
   definition_hash: string
@@ -97,8 +97,16 @@ export function createModelEndpoint(payload: EndpointInput): Promise<ModelEndpoi
   return apiRequest('/api/v1/model-endpoints', { method: 'POST', body: JSON.stringify(payload) })
 }
 
-export function updateModelEndpoint(id: string, payload: Partial<Pick<EndpointInput, 'name' | 'base_url' | 'allowed_models'> & { status: ModelEndpointStatus }>): Promise<ModelEndpoint> {
-  return apiRequest(`/api/v1/model-endpoints/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+export function updateModelEndpoint(
+  id: string,
+  payload: Partial<
+    Pick<EndpointInput, 'name' | 'base_url' | 'allowed_models'> & { status: ModelEndpointStatus }
+  >,
+): Promise<ModelEndpoint> {
+  return apiRequest(`/api/v1/model-endpoints/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
 }
 
 export function checkModelEndpoint(id: string, modelName: string): Promise<HealthCheckResult> {
@@ -112,18 +120,41 @@ export function fetchProfiles(knowledgeBaseId: string): Promise<ProfileCollectio
   return apiRequest(`/api/v1/profiles?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`)
 }
 
-export function createIngestionProfile(payload: { knowledge_base_id: number, max_chars: number, overlap_chars: number, preserve_locator: boolean }): Promise<IngestionProfile> {
+export function createIngestionProfile(payload: {
+  knowledge_base_id: number
+  max_chars: number
+  overlap_chars: number
+  preserve_locator: boolean
+}): Promise<IngestionProfile> {
   return apiRequest('/api/v1/ingestion-profiles', { method: 'POST', body: JSON.stringify(payload) })
 }
 
-export function createEmbeddingProfile(payload: { model_endpoint_id: number, model_name: string, expected_dimension: number | null, normalization: string, query_instruction: string, document_instruction: string }): Promise<EmbeddingProfile> {
+export function createEmbeddingProfile(payload: {
+  model_endpoint_id: number
+  model_name: string
+  expected_dimension: number | null
+  normalization: string
+  query_instruction: string
+  document_instruction: string
+}): Promise<EmbeddingProfile> {
   return apiRequest('/api/v1/embedding-profiles', { method: 'POST', body: JSON.stringify(payload) })
 }
 
-export function createRuntimeProfile(payload: { knowledge_base_id: number, embedding_profile_id: number, generation_endpoint_id: number, generation_model: string, top_k: number, context_max_chars: number, temperature: number, answer_rules: string }): Promise<RuntimeProfile> {
+export function createRuntimeProfile(payload: {
+  knowledge_base_id: number
+  embedding_profile_id: number
+  generation_endpoint_id: number
+  generation_model: string
+  top_k: number
+  context_max_chars: number
+  temperature: number
+  answer_rules: string
+}): Promise<RuntimeProfile> {
   return apiRequest('/api/v1/runtime-profiles', { method: 'POST', body: JSON.stringify(payload) })
 }
 
-export function activateRuntimeProfile(id: string): Promise<{ id: string, active: boolean, effect_scope: 'immediate' | 'rebuild_required' }> {
+export function activateRuntimeProfile(
+  id: string,
+): Promise<{ id: string; active: boolean; effect_scope: 'immediate' | 'rebuild_required' }> {
   return apiRequest(`/api/v1/runtime-profiles/${id}/activate`, { method: 'POST' })
 }

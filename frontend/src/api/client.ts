@@ -8,10 +8,9 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     },
   })
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { detail?: string }
+    const body = (await response.json().catch(() => ({}))) as { detail?: string }
     throw new Error(body.detail ?? `请求失败（${response.status}）`)
   }
-  if (response.status === 204)
-    return undefined as T
-  return await response.json() as T
+  if (response.status === 204) return undefined as T
+  return (await response.json()) as T
 }

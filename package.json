@@ -11,6 +11,8 @@
     "typecheck": "pnpm --filter @ragmanage/frontend run typecheck",
     "lint": "pnpm --filter @ragmanage/frontend run lint",
     "lint:fix": "pnpm --filter @ragmanage/frontend run lint:fix",
-    "test": "pnpm --filter @ragmanage/frontend run test"
+    "test": "pnpm --filter @ragmanage/frontend run test",
+    "format": "pnpm --filter @ragmanage/frontend run format",
+    "format:check": "pnpm --filter @ragmanage/frontend run format:check"
   }
 }

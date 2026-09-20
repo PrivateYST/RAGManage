@@ -18,7 +18,12 @@ from app.rag.profiles import gateway_settings
 
 
 class RetrievalServiceError(RuntimeError):
-    """模型网关暂时无法完成检索。"""
+    """模型网关暂时无法完成检索，并携带已落库的诊断 Trace 标识。"""
+
+    def __init__(self, message: str, *, trace_id: int | None = None) -> None:
+        """保存对外稳定消息和可审计 Trace；不得把网关原始响应传入 message。"""
+        super().__init__(message)
+        self.trace_id = trace_id
 
 
 _CJK_RUN_PATTERN = re.compile(r"[\u3400-\u9fff]+")
@@ -440,7 +445,10 @@ async def execute_vector_search(
             state="failed",
             timings=timings,
         )
-        raise RetrievalServiceError("模型网关暂时无法生成查询向量。") from error
+        raise RetrievalServiceError(
+            "模型网关暂时无法生成查询向量。",
+            trace_id=trace_id,
+        ) from error
 
     search_started = time.perf_counter()
     lexical_terms = _lexical_terms(query)
