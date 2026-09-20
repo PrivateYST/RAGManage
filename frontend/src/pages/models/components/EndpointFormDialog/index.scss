@@ -1,0 +1,4 @@
+.endpoint-dialog { width: min(100%, 540px); }
+.endpoint-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.endpoint-dialog textarea { min-height: 94px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+@media (max-width: 560px) { .endpoint-form-grid { grid-template-columns: 1fr; } }

@@ -102,9 +102,14 @@ export function deleteDocument(documentId: string): Promise<void> {
   return apiRequest(`/api/v1/documents/${encodeURIComponent(documentId)}`, { method: 'DELETE' })
 }
 
-export function fetchTasks(knowledgeBaseId?: string): Promise<{ items: TaskRow[] }> {
-  const query = knowledgeBaseId ? `?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}` : ''
-  return apiRequest(`/api/v1/tasks${query}`)
+export function fetchTasks(filters: { tenantId?: string, knowledgeBaseId?: string } = {}): Promise<{ items: TaskRow[] }> {
+  const query = new URLSearchParams()
+  if (filters.tenantId)
+    query.set('tenant_id', filters.tenantId)
+  if (filters.knowledgeBaseId)
+    query.set('knowledge_base_id', filters.knowledgeBaseId)
+  const suffix = query.size ? `?${query.toString()}` : ''
+  return apiRequest(`/api/v1/tasks${suffix}`)
 }
 
 export function fetchTask(taskId: string): Promise<{ task: TaskRow, items: Array<{ id: string, target_id: string | null, stage: string, state: string, attempt: number, error: Record<string, unknown> | null, updated_at: string }> }> {

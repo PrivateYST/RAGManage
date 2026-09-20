@@ -8,3 +8,4 @@ Each rule is maintained in its own file under `rules/`. Before working on a rele
 - [`rules/business-page-file-structure.md`](rules/business-page-file-structure.md)
 - [`rules/shared-business-component.md`](rules/shared-business-component.md)
 - [`rules/page-subview-components.md`](rules/page-subview-components.md)
+- [`rules/feature-completion-and-testing.md`](rules/feature-completion-and-testing.md)

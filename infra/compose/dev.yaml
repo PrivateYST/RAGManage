@@ -31,7 +31,9 @@ services:
       DATABASE_URL: postgresql://ragmanage:${POSTGRES_PASSWORD}@postgres:5432/ragmanage_dev
       REDIS_URL: redis://redis:6379/0
       STORAGE_ROOT: /data/files
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://192.168.2.59:11434}
+      MODEL_GATEWAY_BASE_URL: ${MODEL_GATEWAY_BASE_URL:-http://172.2.2.230:8080}
+      MODEL_GATEWAY_API_KEY: ${MODEL_GATEWAY_API_KEY:?Run infra/scripts/init-env.ps1 first}
+      MODEL_GATEWAY_ALLOWED_MODELS: ${MODEL_GATEWAY_ALLOWED_MODELS:-qwen3-embedding:0.6b,qwen3.8:27b}
       GENERATION_MODEL: ${GENERATION_MODEL:-qwen3.8:27b}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-qwen3-embedding:0.6b}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
@@ -48,12 +50,27 @@ services:
   worker:
     build: ../../backend
     environment: *app-environment
-    command: ["celery", "-A", "app.jobs.worker:celery_app", "worker", "--loglevel=INFO", "--concurrency=1"]
+    command: ["celery", "-A", "app.jobs.worker:celery_app", "worker", "--beat", "--schedule=/tmp/celerybeat-schedule", "--loglevel=INFO", "--concurrency=1"]
     volumes: ["files:/data/files"]
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
+  frontend:
+    build:
+      context: ../..
+      dockerfile: frontend/Dockerfile.dev
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8000
+    ports: ["127.0.0.1:5173:5173"]
+    volumes:
+      - ../../frontend:/workspace/frontend
+      - frontend-node-modules:/workspace/frontend/node_modules
+      - frontend-root-node-modules:/workspace/node_modules
+    depends_on:
+      api: {condition: service_healthy}
 volumes:
   postgres-data:
   redis-data:
   files:
+  frontend-node-modules:
+  frontend-root-node-modules:

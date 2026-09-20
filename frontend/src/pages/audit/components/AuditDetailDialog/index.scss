@@ -1,0 +1,16 @@
+.audit-detail-backdrop { align-items: center; }
+.audit-detail-dialog { width: min(680px, calc(100vw - 32px)); max-height: min(760px, calc(100vh - 48px)); overflow: auto; }
+.audit-detail-dialog .dialog-close { display: grid; width: 32px; height: 32px; padding: 0; place-items: center; }
+.audit-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 18px 0; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--border); }
+.audit-detail-grid > div { min-width: 0; padding: 12px 14px; background: #fff; }
+.audit-detail-grid .wide { grid-column: 1 / -1; }
+.audit-detail-grid dt { margin-bottom: 5px; color: #71717a; font-size: 11px; }
+.audit-detail-grid dd { display: flex; min-width: 0; margin: 0; flex-direction: column; gap: 2px; color: #27272a; font-size: 13px; }
+.audit-detail-grid small { color: #a1a1aa; font-size: 10px; }
+.audit-detail-grid code { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.audit-json-block { overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
+.audit-json-block > div { display: flex; align-items: center; gap: 7px; padding: 10px 13px; border-bottom: 1px solid var(--border); color: #52525b; background: #fafafa; }
+.audit-json-block strong { font-size: 12px; }
+.audit-json-block pre { max-height: 280px; margin: 0; padding: 14px; overflow: auto; color: #3f3f46; background: #fff; font-size: 11px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+@media (max-width: 640px) { .audit-detail-grid { grid-template-columns: 1fr; }.audit-detail-grid .wide { grid-column: auto; } }
+/* 审计详情弹窗的只读元数据网格与 JSON 摘要样式。 */

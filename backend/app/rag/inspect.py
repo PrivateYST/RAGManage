@@ -9,7 +9,7 @@ from io import TextIOWrapper
 from pathlib import Path
 
 from app.core.config import Settings
-from app.rag.models import OllamaClient
+from app.rag.models import ModelGatewayClient
 from app.rag.parsing import parse_document
 
 
@@ -26,7 +26,7 @@ async def inspect(directory: Path, query: str | None) -> None:
     ]
     if not candidates:
         raise ValueError("NO_COMPLETE_SOURCES")
-    client = OllamaClient(Settings())
+    client = ModelGatewayClient(Settings())
     vectors = []
     for offset in range(0, len(candidates), 16):
         vectors.extend(
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument(
-        "--query", help="Explicitly send corpus text to configured Ollama for recall"
+        "--query", help="Explicitly send corpus text to the configured model gateway for recall"
     )
     args = parser.parse_args()
     asyncio.run(inspect(args.directory, args.query))

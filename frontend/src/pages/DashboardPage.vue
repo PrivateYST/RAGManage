@@ -2,14 +2,14 @@
 import type { KnowledgeBaseRow } from '../api/admin'
 import type { TaskRow } from '../api/documents'
 import { ArrowUpRight, Bot, FileText, Layers3, ListChecks, Plus } from 'lucide-vue-next'
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { fetchKnowledgeBases } from '../api/admin'
 import { fetchTasks } from '../api/documents'
 import { fetchHealth } from '../api/health'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
-const currentSpace = computed(() => auth.spaces[0])
+const currentSpace = computed(() => auth.activeSpace)
 const knowledgeBases = ref<KnowledgeBaseRow[]>([])
 const tasks = ref<TaskRow[]>([])
 const loading = shallowRef(true)
@@ -32,7 +32,7 @@ async function loadDashboard(): Promise<void> {
   try {
     const [knowledgeBaseResponse, taskResponse, health] = await Promise.all([
       fetchKnowledgeBases(currentSpace.value.id),
-      fetchTasks(),
+      fetchTasks({ tenantId: currentSpace.value.id }),
       fetchHealth(controller.signal),
     ])
     knowledgeBases.value = knowledgeBaseResponse.items
@@ -48,7 +48,7 @@ async function loadDashboard(): Promise<void> {
   }
 }
 
-void loadDashboard()
+watch(() => auth.activeSpaceId, loadDashboard, { immediate: true })
 </script>
 
 <template>

@@ -1,0 +1,24 @@
+.release-rollback-backdrop { position: fixed; z-index: 87; display: grid; padding: 20px; background: rgb(24 24 27 / 44%); inset: 0; place-items: center; }
+.release-rollback-dialog { width: min(560px, 100%); overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: #fff; box-shadow: 0 24px 70px rgb(39 39 42 / 22%); }
+.release-rollback-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--border); }
+.release-rollback-heading { display: flex; gap: 11px; }
+.release-rollback-heading > span { display: grid; width: 34px; height: 34px; border-radius: 7px; color: #6242b5; background: #f0ebff; place-items: center; }
+.release-rollback-heading h2 { margin: 0; color: #27272a; font-size: 16px; }
+.release-rollback-heading p { margin: 4px 0 0; color: #71717a; font-size: 11px; }
+.release-rollback-body { padding: 18px 20px 20px; }
+.release-rollback-compare { display: grid; grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr); align-items: center; gap: 10px; }
+.release-rollback-compare > svg { color: #7656c8; }
+.release-rollback-compare article { display: flex; min-height: 76px; flex-direction: column; gap: 4px; padding: 12px 13px; border: 1px solid var(--border); border-radius: 7px; }
+.release-rollback-compare article.target { border-color: #d9cff4; background: #faf8ff; }
+.release-rollback-compare span, .release-rollback-compare small { color: #71717a; font-size: 10px; }
+.release-rollback-compare strong { color: #27272a; font-size: 13px; }
+.release-rollback-target { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.release-rollback-target > div { display: flex; flex-direction: column; gap: 4px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 7px; }
+.release-rollback-target span { color: #71717a; font-size: 10px; }
+.release-rollback-target strong { overflow: hidden; color: #3f3f46; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.release-rollback-warning { display: flex; gap: 10px; margin-top: 12px; padding: 12px 13px; border: 1px solid #fed7aa; border-radius: 7px; color: #9a3412; background: #fff7ed; }
+.release-rollback-warning svg { flex: 0 0 auto; margin-top: 1px; }
+.release-rollback-warning strong { font-size: 12px; }
+.release-rollback-warning p { margin: 4px 0 0; font-size: 10px; line-height: 1.6; }
+.release-rollback-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+@media (max-width: 560px) { .release-rollback-target { grid-template-columns: 1fr; } }

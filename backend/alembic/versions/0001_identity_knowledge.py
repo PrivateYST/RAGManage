@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """初始化身份、权限、知识库和 RAG 生命周期表。
 
 Revision ID: 0001_identity_knowledge
@@ -417,6 +418,7 @@ def _seed_roles_and_menus() -> None:
         INSERT INTO roles(code,name,scope,description,is_system) VALUES
         ('platform_admin','平台管理员','platform','管理客户空间、账号、模型和系统配置',true),
         ('space_admin','空间管理员','tenant','管理客户空间成员和空间内知识库',true),
+        ('space_member','空间成员','tenant','已加入空间但仅能访问显式授权的知识库',true),
         ('kb_admin','知识库管理员','knowledge_base','管理知识库内容、发布和检索调试',true),
         ('editor','编辑者','knowledge_base','上传资料并处理失败任务，不能发布',true),
         ('reader','读者','knowledge_base','查看已发布资料、问答和引用',true),
@@ -464,6 +466,10 @@ def _seed_roles_and_menus() -> None:
         SELECT r.id,m.id FROM roles r JOIN menus m ON m.permission_code IN
         ('dashboard:view','knowledge:view','knowledge_base:list','document:list','chat:use','task:list')
         WHERE r.code='editor' ON CONFLICT DO NOTHING;
+        INSERT INTO role_menus(role_id,menu_id)
+        SELECT r.id,m.id FROM roles r JOIN menus m ON m.permission_code IN
+        ('dashboard:view')
+        WHERE r.code='space_member' ON CONFLICT DO NOTHING;
         INSERT INTO role_menus(role_id,menu_id)
         SELECT r.id,m.id FROM roles r JOIN menus m ON m.permission_code IN
         ('dashboard:view','knowledge_base:list','chat:use')

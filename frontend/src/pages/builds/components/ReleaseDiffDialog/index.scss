@@ -1,0 +1,48 @@
+.release-diff-backdrop { position: fixed; z-index: 85; display: grid; padding: 20px; background: rgb(24 24 27 / 44%); inset: 0; place-items: center; }
+.release-diff-dialog { width: min(760px, 100%); max-height: min(820px, calc(100vh - 40px)); overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: #fff; box-shadow: 0 24px 70px rgb(39 39 42 / 22%); }
+.release-diff-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--border); }
+.release-diff-heading { display: flex; gap: 11px; }
+.release-diff-heading > span { display: grid; width: 34px; height: 34px; border-radius: 7px; color: #6242b5; background: #f0ebff; place-items: center; }
+.release-diff-heading h2 { margin: 0; color: #27272a; font-size: 16px; }
+.release-diff-heading p { margin: 4px 0 0; color: #71717a; font-size: 11px; }
+.release-diff-loading { display: grid; min-height: 320px; color: #71717a; font-size: 12px; place-items: center; align-content: center; gap: 10px; }
+.release-diff-body { max-height: calc(100vh - 150px); padding: 18px 20px; overflow-y: auto; }
+.release-compare-grid, .release-diff-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.release-compare-grid article { display: flex; min-height: 74px; flex-direction: column; gap: 4px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 7px; }
+.release-compare-grid article.candidate { border-color: #d9cff4; background: #faf8ff; }
+.release-compare-grid span, .release-compare-grid small { color: #a1a1aa; font-size: 10px; }
+.release-compare-grid strong { color: #27272a; font-size: 13px; }
+.release-validation { display: flex; gap: 10px; margin-top: 12px; padding: 12px 14px; border: 1px solid; border-radius: 7px; }
+.release-validation.ready { border-color: #bbf7d0; color: #166534; background: #f0fdf4; }
+.release-validation.failed { border-color: #fecaca; color: #991b1b; background: #fef2f2; }
+.release-validation strong { font-size: 12px; }
+.release-validation p, .release-validation ul { margin: 3px 0 0; font-size: 10px; line-height: 1.5; }
+.release-validation ul { padding-left: 16px; }
+.release-diff-counts { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 12px; }
+.release-diff-counts article { display: flex; flex-direction: column; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; }
+.release-diff-counts span { color: #a1a1aa; font-size: 9px; }
+.release-diff-counts strong { margin-top: 3px; color: #3f3f46; font-size: 17px; }
+.release-diff-counts .added strong { color: #15803d; }
+.release-diff-counts .updated strong { color: #6d28d9; }
+.release-diff-counts .removed strong { color: #b91c1c; }
+.release-config-compare, .release-document-diff { margin-top: 12px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 7px; }
+.release-section-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
+.release-section-title strong { color: #3f3f46; font-size: 12px; }
+.release-section-title span { color: #71717a; font-size: 9px; }
+.release-section-title span.changed { color: #9a3412; }
+.release-section-title span.same { color: #166534; }
+.release-config-grid { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 7px 12px; }
+.release-config-grid span { color: #a1a1aa; font-size: 10px; }
+.release-config-grid strong { min-width: 0; overflow: hidden; color: #52525b; font-family: var(--font-mono, monospace); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.release-diff-list { display: flex; flex-direction: column; gap: 7px; }
+.release-diff-list > div { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.release-diff-list strong, .release-diff-list small { font-size: 10px; }
+.release-diff-list small { color: #a1a1aa; }
+.change-badge { padding: 2px 5px; border-radius: 4px; text-align: center; font-size: 9px; }
+.change-badge.added { color: #166534; background: #f0fdf4; }
+.change-badge.updated { color: #6d28d9; background: #f5f3ff; }
+.change-badge.removed { color: #991b1b; background: #fef2f2; }
+.release-diff-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 16px; }
+.release-diff-footer p { margin: 0; color: #71717a; font-size: 10px; }
+.release-diff-footer > div { display: flex; gap: 8px; }
+@media (max-width: 640px) { .release-diff-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .release-diff-footer { align-items: stretch; flex-direction: column; } }

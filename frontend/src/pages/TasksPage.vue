@@ -5,7 +5,9 @@ import { Ban, CheckCircle2, Clock3, ListChecks, RefreshCw, RotateCcw, XCircle } 
 import { computed, ref, shallowRef, watch } from 'vue'
 import { fetchKnowledgeBases } from '../api/admin'
 import { cancelTask, fetchTasks, retryTask } from '../api/documents'
+import { useAuthStore } from '../stores/auth'
 
+const auth = useAuthStore()
 const knowledgeBases = ref<KnowledgeBaseRow[]>([])
 const tasks = ref<TaskRow[]>([])
 const knowledgeBaseId = shallowRef('all')
@@ -52,7 +54,15 @@ async function loadData(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
-    const [kbResponse, taskResponse] = await Promise.all([fetchKnowledgeBases(), fetchTasks()])
+    if (!auth.activeSpaceId) {
+      knowledgeBases.value = []
+      tasks.value = []
+      return
+    }
+    const [kbResponse, taskResponse] = await Promise.all([
+      fetchKnowledgeBases(auth.activeSpaceId),
+      fetchTasks({ tenantId: auth.activeSpaceId }),
+    ])
     knowledgeBases.value = kbResponse.items
     tasks.value = taskResponse.items
   }
@@ -94,12 +104,21 @@ async function handleCancel(task: TaskRow): Promise<void> {
   }
 }
 
-watch(knowledgeBaseId, async (value) => {
-  if (value === 'all')
+watch(() => auth.activeSpaceId, async () => {
+  knowledgeBaseId.value = 'all'
+  await loadData()
+}, { immediate: true })
+
+watch(knowledgeBaseId, async (value, previousValue) => {
+  if (value === previousValue || !auth.activeSpaceId)
     return
   loading.value = true
+  error.value = ''
   try {
-    tasks.value = (await fetchTasks(value)).items
+    tasks.value = (await fetchTasks({
+      tenantId: auth.activeSpaceId,
+      ...(value === 'all' ? {} : { knowledgeBaseId: value }),
+    })).items
   }
   catch (cause) {
     error.value = cause instanceof Error ? cause.message : '任务加载失败'
@@ -108,8 +127,6 @@ watch(knowledgeBaseId, async (value) => {
     loading.value = false
   }
 })
-
-void loadData()
 </script>
 
 <template>

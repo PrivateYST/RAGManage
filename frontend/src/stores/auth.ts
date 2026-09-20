@@ -1,9 +1,10 @@
 import type { AuthContext, MenuItem } from '../api/auth'
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { currentUser, login, logout } from '../api/auth'
 
 export const useAuthStore = defineStore('auth', () => {
+  const activeSpaceId = shallowRef(localStorage.getItem('ragmanage_active_space_id') ?? '')
   const context = ref<AuthContext | null>(null)
   const loading = ref(false)
   const initialized = ref(false)
@@ -12,14 +13,37 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => context.value !== null)
   const user = computed(() => context.value?.user ?? null)
   const spaces = computed(() => context.value?.spaces ?? [])
+  const activeSpace = computed(() => spaces.value.find(space => space.id === activeSpaceId.value) ?? null)
   const menus = computed(() => context.value?.menus ?? [])
+
+  function reconcileActiveSpace(): void {
+    const available = spaces.value
+    if (!available.some(space => space.id === activeSpaceId.value))
+      activeSpaceId.value = available[0]?.id ?? ''
+    if (activeSpaceId.value)
+      localStorage.setItem('ragmanage_active_space_id', activeSpaceId.value)
+    else
+      localStorage.removeItem('ragmanage_active_space_id')
+  }
+
+  function setActiveSpace(spaceId: string): void {
+    if (!spaces.value.some(space => space.id === spaceId))
+      return
+    activeSpaceId.value = spaceId
+    localStorage.setItem('ragmanage_active_space_id', spaceId)
+  }
+
+  async function refreshContext(): Promise<void> {
+    context.value = await currentUser()
+    reconcileActiveSpace()
+  }
 
   async function initialize(): Promise<void> {
     if (initialized.value)
       return
     loading.value = true
     try {
-      context.value = await currentUser()
+      await refreshContext()
     }
     catch {
       context.value = null
@@ -35,6 +59,7 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = ''
     try {
       context.value = await login(loginName, password)
+      reconcileActiveSpace()
       initialized.value = true
       return true
     }
@@ -50,11 +75,13 @@ export const useAuthStore = defineStore('auth', () => {
   async function signOut(): Promise<void> {
     await logout().catch(() => undefined)
     context.value = null
+    activeSpaceId.value = ''
+    localStorage.removeItem('ragmanage_active_space_id')
   }
 
   function can(permission: string): boolean {
     return menus.value.some((menu: MenuItem) => menu.permission_code === permission)
   }
 
-  return { context, loading, initialized, error, isAuthenticated, user, spaces, menus, initialize, signIn, signOut, can }
+  return { context, loading, initialized, error, isAuthenticated, user, spaces, activeSpaceId, activeSpace, menus, initialize, refreshContext, signIn, signOut, setActiveSpace, can }
 })

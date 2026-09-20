@@ -1,0 +1,12 @@
+FROM node:24-alpine
+
+WORKDIR /workspace
+RUN corepack enable && corepack prepare pnpm@11.1.0 --activate
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package.json ./frontend/package.json
+RUN pnpm install --frozen-lockfile --filter @ragmanage/frontend...
+
+COPY frontend ./frontend
+
+CMD ["pnpm", "--filter", "@ragmanage/frontend", "exec", "vite", "--host", "0.0.0.0"]

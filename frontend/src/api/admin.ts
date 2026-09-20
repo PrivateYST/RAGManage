@@ -7,6 +7,7 @@ export interface KnowledgeBaseRow {
   description: string
   purpose: string
   status: string
+  active_release_id: string | null
   document_count: number
   updated_at: string
 }

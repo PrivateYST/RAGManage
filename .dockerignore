@@ -1,0 +1,10 @@
+.git
+.run
+**/node_modules
+**/dist
+**/.vite
+backend/.venv
+backend/.mypy_cache
+backend/.pytest_cache
+backend/.ruff_cache
+data

@@ -33,7 +33,6 @@ import { useAuthStore } from '../stores/auth'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const activeSpaceId = shallowRef(auth.spaces[0]?.id ?? '')
 const collapsed = shallowRef(false)
 const profileOpen = shallowRef(false)
 const passwordOpen = shallowRef(false)
@@ -72,6 +71,10 @@ const isActive = (path: string | null) => path === route.path || (path !== '/' &
 const isOpen = (code: string) => openGroups.value.has(code)
 const userInitial = computed(() => auth.user?.display_name?.slice(0, 1) || 'U')
 const userRoleLabel = computed(() => auth.user?.platform_role === 'platform_admin' ? '平台管理员' : '空间成员')
+const activeSpaceId = computed({
+  get: () => auth.activeSpaceId,
+  set: (spaceId: string) => auth.setActiveSpace(spaceId),
+})
 
 function toggle(code: string): void {
   if (collapsed.value)

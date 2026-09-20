@@ -1,0 +1,23 @@
+.members-page { padding-bottom: 28px; }
+.member-page-actions { display: flex; align-items: center; gap: 8px; }
+.member-success-banner { margin-bottom: 17px; padding: 10px 13px; border: 1px solid #bbf7d0; border-radius: 6px; color: #166534; background: #f0fdf4; font-size: 12px; }
+.member-context-bar { display: flex; min-height: 42px; align-items: center; gap: 8px; margin-bottom: 14px; padding: 0 14px; border: 1px solid #ddd6f3; border-radius: 7px; color: #6242b5; background: #faf8ff; font-size: 11px; }
+.member-context-bar strong { color: #3f3f46; font-size: 12px; }
+.member-context-role { margin-left: auto; padding: 3px 7px; border-radius: 4px; color: #6242b5; background: #f0ebff; font-size: 10px; }
+.member-stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+.member-stats-grid article { display: flex; min-height: 72px; align-items: center; gap: 10px; padding: 13px 15px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.member-stats-grid article > span { display: grid; width: 32px; height: 32px; flex: 0 0 32px; border-radius: 7px; color: #6242b5; background: #f0ebff; place-items: center; }
+.member-stats-grid article > div { display: flex; flex-direction: column; gap: 2px; }
+.member-stats-grid small { color: #71717a; font-size: 9px; }
+.member-stats-grid strong { color: #27272a; font-size: 18px; line-height: 1.1; }
+.member-tabs { display: flex; align-items: center; gap: 3px; margin-bottom: 10px; padding: 3px; border: 1px solid var(--border); border-radius: 7px; background: #fafafa; }
+.member-tabs button { display: inline-flex; height: 31px; align-items: center; gap: 6px; padding: 0 11px; border: 0; border-radius: 5px; color: #71717a; background: transparent; font-size: 11px; }
+.member-tabs button:hover { color: #3f3f46; background: #f4f4f5; }
+.member-tabs button.active { color: #6242b5; background: #fff; box-shadow: 0 1px 2px rgb(63 45 91 / 8%); font-weight: 600; }
+.member-list-card { padding: 0; overflow: hidden; }
+.member-list-card > header { display: flex; min-height: 62px; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+.member-list-card > header > div { display: flex; flex-direction: column; gap: 3px; }
+.member-list-card > header strong { color: #27272a; font-size: 13px; }
+.member-list-card > header small, .member-list-card > header > span { color: #71717a; font-size: 10px; }
+.status-pill.ready { color: #166534; background: #f0fdf4; }
+@media (max-width: 800px) { .member-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.page-intro { align-items: stretch; flex-direction: column; }.member-page-actions { justify-content: flex-end; } }

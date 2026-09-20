@@ -1,0 +1,34 @@
+.release-detail-backdrop { position: fixed; z-index: 86; display: grid; padding: 20px; background: rgb(24 24 27 / 44%); inset: 0; place-items: center; }
+.release-detail-dialog { width: min(820px, 100%); max-height: min(850px, calc(100vh - 40px)); overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: #fff; box-shadow: 0 24px 70px rgb(39 39 42 / 22%); }
+.release-detail-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--border); }
+.release-detail-heading { display: flex; gap: 11px; }
+.release-detail-heading > span { display: grid; width: 34px; height: 34px; border-radius: 7px; color: #6242b5; background: #f0ebff; place-items: center; }
+.release-detail-heading h2 { margin: 0; color: #27272a; font-size: 17px; }
+.release-detail-heading p { margin: 5px 0 0; color: #71717a; font-size: 12px; }
+.release-detail-loading { display: grid; min-height: 340px; color: #71717a; font-size: 13px; place-items: center; align-content: center; gap: 10px; }
+.release-detail-error { margin: 20px; padding: 12px 14px; border: 1px solid #fecaca; border-radius: 7px; color: #991b1b; background: #fef2f2; font-size: 12px; }
+.release-detail-body { max-height: calc(100vh - 136px); padding: 18px 20px 20px; overflow-y: auto; }
+.release-explanation { padding: 12px 14px; border: 1px solid #e9e4f6; border-radius: 7px; background: #faf8ff; }
+.release-explanation strong { color: #3f3f46; font-size: 13px; }
+.release-explanation p { margin: 5px 0 0; color: #625b71; font-size: 12px; line-height: 1.65; }
+.release-detail-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.release-detail-metrics article { display: flex; flex-direction: column; padding: 11px 12px; border: 1px solid var(--border); border-radius: 7px; }
+.release-detail-metrics span { color: #71717a; font-size: 11px; }
+.release-detail-metrics strong { margin-top: 4px; color: #27272a; font-size: 18px; }
+.release-detail-section { margin-top: 12px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 7px; }
+.release-detail-section-title { display: flex; min-height: 24px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.release-detail-section-title > strong { color: #3f3f46; font-size: 13px; }
+.release-detail-section-title > span:not(.status-pill) { color: #71717a; font-size: 11px; }
+.release-detail-config { display: grid; grid-template-columns: 88px minmax(0, 1fr) 88px minmax(0, 1fr); gap: 8px 12px; margin: 0; }
+.release-detail-config dt { color: #71717a; font-size: 11px; }
+.release-detail-config dd { min-width: 0; margin: 0; overflow: hidden; color: #3f3f46; font-family: var(--font-mono, monospace); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.release-document-table { overflow: hidden; border: 1px solid var(--border); border-radius: 6px; }
+.release-document-row { display: grid; grid-template-columns: minmax(180px, 1fr) 70px 70px 70px 86px; align-items: center; gap: 8px; min-height: 42px; padding: 0 12px; border-bottom: 1px solid var(--border); color: #52525b; font-size: 12px; }
+.release-document-row:last-child { border-bottom: 0; }
+.release-document-row.header { min-height: 36px; color: #71717a; background: #fafafa; font-size: 11px; }
+.release-document-name { display: flex; min-width: 0; align-items: center; gap: 7px; overflow: hidden; color: #3f3f46; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.release-document-name svg { flex: 0 0 auto; color: #7656c8; }
+.release-document-state { color: #166534; }
+.release-document-empty { display: grid; min-height: 70px; color: #71717a; font-size: 12px; place-items: center; }
+.status-pill.retired { color: #52525b; background: #f4f4f5; }
+@media (max-width: 680px) { .release-detail-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .release-detail-config { grid-template-columns: 80px minmax(0, 1fr); } .release-document-table { overflow-x: auto; } .release-document-row { min-width: 560px; } }

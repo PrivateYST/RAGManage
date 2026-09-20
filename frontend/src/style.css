@@ -151,6 +151,7 @@ body { overflow: hidden; }
 .chunk-preview { min-height: 0; margin-top: 15px; }.chunk-preview-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: #52525b; font-size: 12px; }.chunk-preview-heading span { color: #a1a1aa; font-size: 10px; }
 .chunk-preview-loading, .chunk-preview-error { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 90px; color: #a1a1aa; font-size: 11px; }.chunk-preview-error { padding: 12px; border: 1px solid #fed7aa; border-radius: 6px; color: #9a3412; background: #fff7ed; }
 .chunk-list { max-height: 300px; overflow-y: auto; padding-right: 4px; }.chunk-item { padding: 10px 11px; border: 1px solid #f0f0f1; border-radius: 6px; }.chunk-item + .chunk-item { margin-top: 6px; }.chunk-item-meta { display: flex; align-items: center; gap: 8px; color: #6366f1; font-size: 10px; }.chunk-item-meta code { margin-left: auto; color: #a1a1aa; font-size: 9px; }.chunk-item p { margin: 6px 0 0; color: #52525b; font-size: 11px; line-height: 1.65; white-space: pre-wrap; }
+.chunk-item.citation-target { border-color: #9b82dc; background: #faf8ff; box-shadow: 0 0 0 2px rgb(118 86 200 / 10%); }
 .detail-loading { min-height: 220px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; margin: -1px; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .dashboard-loading { min-height: 170px; margin-bottom: 20px; }.dashboard-loading p { margin: 8px 0 0; color: var(--muted); font-size: 11px; }

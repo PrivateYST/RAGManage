@@ -2,8 +2,9 @@
 
 内部知识库管理与引用问答系统。当前交付包含 Vue 3 / TypeScript 管理界面、
 FastAPI 身份与知识库接口、PostgreSQL + pgvector、Redis 和 Celery worker 开发容器。
-已实现登录、空间/知识库管理、文档上传、异步解析、任务状态、版本详情和切片预览；
-发布、检索问答和结构化记录按实施计划继续接入。
+已实现登录、空间/知识库管理、文档上传、异步解析、任务状态、版本详情、切片预览、
+API Key 模型网关、索引构建、发布前校验、差异预览和不可变 Release 发布；
+检索问答、回退和结构化记录按实施计划继续接入。
 
 实施方案位于 [md/最终可行方案md](md/最终可行方案md/README.md)。
 公司模型服务核验见 [模型报告](docs/model-compatibility.md)，工程验证见 [P02 记录](docs/evidence/p02-engineering.md)。
@@ -13,7 +14,8 @@ FastAPI 身份与知识库接口、PostgreSQL + pgvector、Redis 和 Celery work
 - Node.js 24.13.0、pnpm 11.1.0（根目录 packageManager 固定）。
 - Python 3.12，由 uv 0.12.15 创建隔离环境；依赖固定在 backend/uv.lock。
 - Docker Desktop 使用 Linux containers；PowerShell 7 用于 Windows 辅助脚本。
-- 公司 Ollama 地址在 `.env` 配置；本机不安装模型。
+- 公司 Open WebUI 模型网关地址在 `.env` 配置；本机不安装模型。API 和 Worker
+  使用 API Key 访问网关，不直接连接 Ollama 模型端口。
 
 ### 首次安装（项目根目录）
 
@@ -35,6 +37,14 @@ Linux/macOS 可手动复制 `.env.example`，为 POSTGRES_PASSWORD 填入随机�
 接口文档：[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)。
 前端 `/api` 经 Vite 转发到本地 API；浏览器不直接调用公司模型。
 环境页显示真实健康状态，无法连接时提供错误及重试。
+
+### 模型网关与 API Key
+
+API Key 从 Open WebUI 的“账号 → API 密钥”创建，写入本机或部署环境的
+`MODEL_GATEWAY_API_KEY`。API 和 Worker 使用 `Authorization: Bearer` 调用网关；
+嵌入调用 OpenAI 兼容的 `/api/embeddings`，模型摘要通过受认证的
+`/ollama/api/tags` 获取。`.env` 中 `MODEL_GATEWAY_ALLOWED_MODELS` 是业务侧白名单。
+业务数据库仅保存 `env:MODEL_GATEWAY_API_KEY` 这一引用，密钥明文不进入数据库和 Git。
 
 ### 后端热更新
 

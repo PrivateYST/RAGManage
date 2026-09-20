@@ -8,11 +8,12 @@
 |---|---|
 | `http://192.168.2.59:11434` | Ollama 0.34.1；version/tags/ps/show 可访问 |
 | `http://172.2.2.230:11434` | 同版本、同模型清单及 digest；网络映射关系未核实 |
-| `http://172.2.2.230:8080` | Open WebUI 0.11.3，health 正常，启用登录 |
+| `http://172.2.2.230:8080` | Open WebUI 0.11.3，API Key 认证、模型列表和嵌入接口正常 |
 | `192.168.2.59:3389` | TCP 连通；本轮未登录远程桌面 |
 | SSH / WinRM | 两地址 SSH 22 未连通；192.168.2.59:5985 未连通 |
 
-后端候选接入地址为 `http://192.168.2.59:11434`。8080 是 WebUI，不直接当作 Ollama API。
+正式后端接入地址调整为 `http://172.2.2.230:8080`，通过 Open WebUI API Key 网关访问；
+业务 API 和 Worker 不再直接连接 Ollama 端口。
 本轮通过 HTTP API 检查，未安装、更新或重启服务器软件，也未修改模型配置。
 测试使用无业务信息的短文本；推理请求会临时加载模型，keep_alive 设置为 1 分钟。
 账号密码不写入工程或报告。
@@ -29,6 +30,11 @@
 不可变 profile 应登记此 GGUF digest、量化和服务版本，不等同于未量化 Hugging Face 权重。
 
 ## 实际冒烟结果
+
+网关：携带 Bearer API Key 调用 `/api/models` 可读取两个白名单模型；
+`/api/embeddings` 与 `/api/v1/embeddings` 均返回 1024 维向量，
+`/ollama/api/embed` 兼容接口也返回 1024 维向量。工程采用 OpenAI 兼容的
+`/api/embeddings`，并通过受认证的 `/ollama/api/tags` 保存 Ollama 模型 digest。
 
 嵌入：两条短文本、truncate=false；耗时 4.939 秒，其中加载 4.725 秒；
 返回 2×1024 维，L2 norm 分别约 1.00000048、1.00000026，prompt_eval_count=39。

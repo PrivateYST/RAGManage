@@ -2,13 +2,17 @@
 import type { KnowledgeBaseRow } from '../api/admin'
 import type { ChunkRow, DocumentDetail, DocumentRow } from '../api/documents'
 import { FileText, Plus, RefreshCw, X } from 'lucide-vue-next'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { fetchKnowledgeBases } from '../api/admin'
 import { deleteDocument, disableDocument, fetchDocument, fetchDocuments, fetchVersionPreview, uploadDocument } from '../api/documents'
 import DocumentFilters from '../components/documents/DocumentFilters.vue'
 import DocumentTable from '../components/documents/DocumentTable.vue'
 import UploadDialog from '../components/documents/UploadDialog.vue'
+import { useAuthStore } from '../stores/auth'
 
+const auth = useAuthStore()
+const route = useRoute()
 const knowledgeBases = ref<KnowledgeBaseRow[]>([])
 const activeKnowledgeBaseId = shallowRef('')
 const documents = ref<DocumentRow[]>([])
@@ -26,6 +30,8 @@ const detailChunks = ref<ChunkRow[]>([])
 const detailLoading = shallowRef(false)
 const detailChunksLoading = shallowRef(false)
 const detailChunksError = shallowRef('')
+const highlightedChunkId = shallowRef('')
+let openedCitationKey = ''
 
 const visibleDocuments = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase()
@@ -47,10 +53,25 @@ const purposeLabels: Record<string, string> = {
 
 async function loadKnowledgeBases(): Promise<void> {
   loadingKnowledgeBases.value = true
+  error.value = ''
   try {
-    knowledgeBases.value = (await fetchKnowledgeBases()).items
-    if (!activeKnowledgeBaseId.value && knowledgeBases.value[0])
-      activeKnowledgeBaseId.value = knowledgeBases.value[0].id
+    if (!auth.activeSpaceId) {
+      knowledgeBases.value = []
+      activeKnowledgeBaseId.value = ''
+      documents.value = []
+      return
+    }
+    knowledgeBases.value = (await fetchKnowledgeBases(auth.activeSpaceId)).items
+    const requestedKnowledgeBaseId = typeof route.query.knowledge_base_id === 'string'
+      ? route.query.knowledge_base_id
+      : ''
+    activeKnowledgeBaseId.value = knowledgeBases.value.some(
+      item => item.id === requestedKnowledgeBaseId,
+    )
+      ? requestedKnowledgeBaseId
+      : knowledgeBases.value[0]?.id ?? ''
+    if (!activeKnowledgeBaseId.value)
+      documents.value = []
   }
   catch (cause) {
     error.value = cause instanceof Error ? cause.message : '知识库加载失败'
@@ -101,7 +122,7 @@ async function handleUpload(file: File): Promise<void> {
   }
 }
 
-async function openDetail(document: DocumentRow): Promise<void> {
+async function openDetail(document: DocumentRow, preferredVersionId?: string): Promise<void> {
   detailLoading.value = true
   detailChunksLoading.value = false
   detailChunksError.value = ''
@@ -113,9 +134,10 @@ async function openDetail(document: DocumentRow): Promise<void> {
     detail.value = data
     detailLoading.value = false
 
-    const latestVersion = data.versions[0]
-    if (latestVersion)
-      void loadDetailChunks(latestVersion.id)
+    const selectedVersion = data.versions.find(version => version.id === preferredVersionId)
+      ?? data.versions[0]
+    if (selectedVersion)
+      await loadDetailChunks(selectedVersion.id)
   }
   catch (cause) {
     error.value = cause instanceof Error ? cause.message : '文档详情加载失败'
@@ -134,6 +156,14 @@ async function loadDetailChunks(versionId: string): Promise<void> {
     })
     const preview = await Promise.race([previewPromise, timeoutPromise])
     detailChunks.value = preview.chunks
+    highlightedChunkId.value = typeof route.query.chunk_id === 'string'
+      ? route.query.chunk_id
+      : ''
+    await nextTick()
+    if (highlightedChunkId.value) {
+      window.document.querySelector(`[data-chunk-id="${highlightedChunkId.value}"]`)
+        ?.scrollIntoView({ block: 'center' })
+    }
   }
   catch (cause) {
     detailChunksError.value = cause instanceof Error ? cause.message : '切片预览加载失败'
@@ -150,6 +180,7 @@ function closeDetail(): void {
   detailChunks.value = []
   detailChunksError.value = ''
   detailChunksLoading.value = false
+  highlightedChunkId.value = ''
 }
 
 async function handleDisable(document: DocumentRow): Promise<void> {
@@ -204,11 +235,26 @@ function formatDate(value: string): string {
 }
 
 watch(activeKnowledgeBaseId, loadDocuments)
-watch(() => knowledgeBases.value.length, () => {
-  if (!activeKnowledgeBaseId.value && knowledgeBases.value[0])
-    activeKnowledgeBaseId.value = knowledgeBases.value[0].id
+watch(() => auth.activeSpaceId, loadKnowledgeBases, { immediate: true })
+watch([documents, () => route.fullPath], async () => {
+  const documentId = typeof route.query.document_id === 'string' ? route.query.document_id : ''
+  const versionId = typeof route.query.version_id === 'string' ? route.query.version_id : undefined
+  if (!documentId)
+    return
+  const citationKey = `${documentId}:${versionId ?? ''}:${String(route.query.chunk_id ?? '')}`
+  if (citationKey === openedCitationKey)
+    return
+  const target = documents.value.find(document => document.id === documentId)
+  if (!target)
+    return
+  openedCitationKey = citationKey
+  await openDetail(target, versionId)
+}, { immediate: true })
+
+watch(() => route.query.knowledge_base_id, (value) => {
+  if (typeof value === 'string' && knowledgeBases.value.some(item => item.id === value))
+    activeKnowledgeBaseId.value = value
 })
-void loadKnowledgeBases()
 </script>
 
 <template>
@@ -309,7 +355,13 @@ void loadKnowledgeBases()
             {{ detailChunksError }}
           </div>
           <div v-else-if="detailChunks.length" class="chunk-list">
-            <article v-for="chunk in detailChunks" :key="chunk.id" class="chunk-item">
+            <article
+              v-for="chunk in detailChunks"
+              :key="chunk.id"
+              class="chunk-item"
+              :class="{ 'citation-target': chunk.id === highlightedChunkId }"
+              :data-chunk-id="chunk.id"
+            >
               <div class="chunk-item-meta">
                 <span>#{{ chunk.ordinal + 1 }}</span><span v-if="chunk.section_path.length">{{ chunk.section_path.join(' / ') }}</span><code>{{ Object.entries(chunk.locator).map(([key, value]) => `${key} ${value}`).join(' · ') }}</code>
               </div>

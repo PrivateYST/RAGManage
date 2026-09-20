@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -17,6 +18,30 @@ SESSION_COOKIE = "ragmanage_session"
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+async def _write_auth_audit(
+    connection: asyncpg.Connection,
+    *,
+    actor_id: int | None,
+    action: str,
+    target_type: str,
+    target_id: int | None,
+    summary: dict[str, Any],
+) -> None:
+    """记录认证事件；摘要禁止包含密码、令牌或 Cookie。"""
+    await connection.execute(
+        """
+        INSERT INTO audit_logs(
+          actor_id, action, target_type, target_id, change_summary
+        ) VALUES ($1, $2, $3, $4, $5::jsonb)
+        """,
+        actor_id,
+        action,
+        target_type,
+        str(target_id) if target_id is not None else None,
+        json.dumps(summary, ensure_ascii=False),
+    )
 
 
 async def ensure_bootstrap_admin(settings: Settings) -> None:
@@ -68,6 +93,7 @@ async def authenticate(settings: Settings, login: str, password: str) -> dict[st
         return None
     connection = await asyncpg.connect(settings.database_url, timeout=5)
     try:
+        login_name = login.strip()[:120]
         user = await connection.fetchrow(
             """
             SELECT u.id, u.login, u.display_name, u.password_hash, u.platform_role_id,
@@ -75,28 +101,55 @@ async def authenticate(settings: Settings, login: str, password: str) -> dict[st
             FROM users u LEFT JOIN roles r ON r.id = u.platform_role_id
             WHERE u.login = $1 AND u.status = 'active'
             """,
-            login,
+            login_name,
         )
         if user is None:
+            await _write_auth_audit(
+                connection,
+                actor_id=None,
+                action="auth.login.failed",
+                target_type="user",
+                target_id=None,
+                summary={"login": login_name, "reason": "invalid_credentials"},
+            )
             return None
         try:
             password_hasher.verify(user["password_hash"], password)
         except (VerifyMismatchError, VerificationError, InvalidHashError):
+            await _write_auth_audit(
+                connection,
+                actor_id=None,
+                action="auth.login.failed",
+                target_type="user",
+                target_id=int(user["id"]),
+                summary={"login": login_name, "reason": "invalid_credentials"},
+            )
             return None
-        await connection.execute(
-            "UPDATE users SET last_login_at = now(), updated_at = now() WHERE id = $1", user["id"]
-        )
-        token = secrets.token_urlsafe(32)
-        await connection.execute(
-            """
-            INSERT INTO sessions(user_id, token_hash, expires_at)
-            VALUES ($1, $2, $3)
-            """,
-            user["id"],
-            _token_hash(token),
-            datetime.now(UTC) + timedelta(hours=settings.session_ttl_hours),
-        )
-        context = await load_user_context(connection, user, token)
+        async with connection.transaction():
+            await connection.execute(
+                "UPDATE users SET last_login_at = now(), updated_at = now() WHERE id = $1",
+                user["id"],
+            )
+            token = secrets.token_urlsafe(32)
+            session_id = await connection.fetchval(
+                """
+                INSERT INTO sessions(user_id, token_hash, expires_at)
+                VALUES ($1, $2, $3)
+                RETURNING id
+                """,
+                user["id"],
+                _token_hash(token),
+                datetime.now(UTC) + timedelta(hours=settings.session_ttl_hours),
+            )
+            await _write_auth_audit(
+                connection,
+                actor_id=int(user["id"]),
+                action="auth.login.success",
+                target_type="session",
+                target_id=int(session_id),
+                summary={"login": login_name, "result": "success"},
+            )
+            context = await load_user_context(connection, user, token)
         return context
     finally:
         await connection.close()
@@ -133,9 +186,24 @@ async def revoke_token(settings: Settings, token: str | None) -> None:
         return
     connection = await asyncpg.connect(settings.database_url, timeout=5)
     try:
-        await connection.execute(
-            "UPDATE sessions SET revoked_at = now() WHERE token_hash = $1", _token_hash(token)
-        )
+        async with connection.transaction():
+            session = await connection.fetchrow(
+                """
+                UPDATE sessions SET revoked_at = now()
+                WHERE token_hash = $1 AND revoked_at IS NULL
+                RETURNING id, user_id
+                """,
+                _token_hash(token),
+            )
+            if session is not None:
+                await _write_auth_audit(
+                    connection,
+                    actor_id=int(session["user_id"]),
+                    action="auth.logout",
+                    target_type="session",
+                    target_id=int(session["id"]),
+                    summary={"result": "revoked"},
+                )
     finally:
         await connection.close()
 
@@ -171,10 +239,22 @@ async def load_user_context(
                    m.route, m.icon, m.permission_code, m.sort_order, m.visible
             FROM menus m JOIN role_menus rm ON rm.menu_id = m.id
             JOIN roles r ON r.id = rm.role_id
-            JOIN tenant_members tm ON tm.role_id = r.id
-            WHERE tm.user_id = $1 AND tm.status = 'active' AND m.status = 'active'
+            WHERE m.status = 'active'
               AND m.visible = true
-            ORDER BY m.sort_order, m.id
+              AND (
+                EXISTS (
+                  SELECT 1 FROM tenant_members tm
+                  JOIN tenants t ON t.id = tm.tenant_id AND t.status = 'active'
+                  WHERE tm.user_id = $1 AND tm.status = 'active' AND tm.role_id = r.id
+                ) OR EXISTS (
+                  SELECT 1 FROM kb_members km
+                  JOIN tenant_members tm ON tm.tenant_id = km.tenant_id
+                    AND tm.user_id = km.user_id AND tm.status = 'active'
+                  JOIN tenants t ON t.id = km.tenant_id AND t.status = 'active'
+                  WHERE km.user_id = $1 AND km.status = 'active' AND km.role_id = r.id
+                )
+              )
+            ORDER BY m.sort_order, m.id::text
             """,
             user["id"],
         )

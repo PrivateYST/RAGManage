@@ -1,0 +1,15 @@
+.member-audit-card { padding: 0; overflow: hidden; }
+.member-audit-card > header { display: flex; min-height: 68px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+.member-audit-card > header > div { display: flex; align-items: center; gap: 10px; }
+.member-audit-card > header > div > span { display: grid; width: 32px; height: 32px; border-radius: 7px; color: #6242b5; background: #f0ebff; place-items: center; }
+.member-audit-card header strong { display: block; color: #27272a; font-size: 13px; }
+.member-audit-card header small { display: block; margin-top: 3px; color: #71717a; font-size: 10px; }
+.member-audit-list { margin: 0; padding: 4px 18px 14px 40px; list-style: none; }
+.member-audit-list li { position: relative; padding: 14px 0 14px 15px; border-bottom: 1px solid #f4f4f5; }
+.member-audit-list li:last-child { border-bottom: 0; }
+.audit-dot { position: absolute; top: 19px; left: -13px; width: 7px; height: 7px; border: 2px solid #c4b5e8; border-radius: 50%; background: #fff; }
+.member-audit-list li > div > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.member-audit-list strong { color: #3f3f46; font-size: 11px; }
+.member-audit-list time { color: #a1a1aa; font-size: 9px; }
+.member-audit-list p { margin: 5px 0 3px; color: #71717a; font-size: 10px; }
+.member-audit-list small { color: #a1a1aa; font-size: 9px; }

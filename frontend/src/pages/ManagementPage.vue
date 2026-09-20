@@ -44,7 +44,7 @@ async function loadData(): Promise<void> {
   error.value = ''
   try {
     if (route.path === '/knowledge-bases')
-      knowledgeBases.value = (await fetchKnowledgeBases()).items
+      knowledgeBases.value = auth.activeSpaceId ? (await fetchKnowledgeBases(auth.activeSpaceId)).items : []
     if (route.path === '/system/menus')
       menus.value = (await fetchMenus()).items
     if (route.path === '/system/users')
@@ -102,7 +102,7 @@ async function toggleUser(user: UserRow): Promise<void> {
 function handlePrimaryAction(): void {
   if (route.path === '/knowledge-bases') {
     knowledgeBaseForm.value = {
-      tenant_id: auth.spaces[0]?.id ?? '',
+      tenant_id: auth.activeSpaceId,
       name: '',
       description: '',
       purpose: 'general',
@@ -140,7 +140,9 @@ async function saveTenant(): Promise<void> {
   savingTenant.value = true
   error.value = ''
   try {
-    await createTenant(tenantForm.value)
+    const tenant = await createTenant(tenantForm.value)
+    await auth.refreshContext()
+    auth.setActiveSpace(tenant.id)
     showTenantDialog.value = false
     await loadData()
   }
@@ -152,7 +154,7 @@ async function saveTenant(): Promise<void> {
   }
 }
 
-watch(() => route.path, loadData, { immediate: true })
+watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true })
 </script>
 
 <template>
@@ -286,7 +288,7 @@ watch(() => route.path, loadData, { immediate: true })
           关闭
         </button>
       </div>
-      <label>所属空间<select v-model="knowledgeBaseForm.tenant_id" required><option disabled value="">请选择空间</option><option v-for="space in auth.spaces" :key="space.id" :value="space.id">{{ space.name }}</option></select></label>
+      <label>所属空间<input :value="auth.activeSpace?.name || '暂无可用空间'" disabled></label>
       <label>知识库名称<input v-model.trim="knowledgeBaseForm.name" required minlength="2" maxlength="120"></label>
       <label>业务用途<select v-model="knowledgeBaseForm.purpose"><option value="general">通用知识</option><option value="product">产品说明</option><option value="troubleshooting">故障排查</option><option value="rule">业务规则</option></select></label>
       <label>说明<textarea v-model.trim="knowledgeBaseForm.description" maxlength="1000" rows="4" placeholder="说明知识库覆盖的业务范围" /></label>
