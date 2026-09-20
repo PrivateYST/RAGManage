@@ -33,8 +33,10 @@ services:
       DATABASE_URL: postgresql://ragmanage:${POSTGRES_PASSWORD}@postgres:5432/ragmanage
       REDIS_URL: redis://redis:6379/0
       STORAGE_ROOT: /data/files
-      MODEL_GATEWAY_BASE_URL: ${MODEL_GATEWAY_BASE_URL:?Set MODEL_GATEWAY_BASE_URL}
-      MODEL_GATEWAY_API_KEY: ${MODEL_GATEWAY_API_KEY:?Set MODEL_GATEWAY_API_KEY}
+      # The gateway has a stable in-network default; deployments can override it in the server .env.
+      MODEL_GATEWAY_BASE_URL: ${MODEL_GATEWAY_BASE_URL:-http://172.2.2.230:8080}
+      # An empty key keeps the platform bootable; model operations still fail closed in ModelGatewayClient.
+      MODEL_GATEWAY_API_KEY: ${MODEL_GATEWAY_API_KEY:-}
       MODEL_GATEWAY_ALLOWED_MODELS: ${MODEL_GATEWAY_ALLOWED_MODELS:-qwen3-embedding:0.6b,qwen3.8:27b}
       GENERATION_MODEL: ${GENERATION_MODEL:?Set GENERATION_MODEL}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:?Set EMBEDDING_MODEL}

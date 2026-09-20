@@ -24,6 +24,9 @@ jobs:
         shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use a PAT with read/write:packages when the GHCR package is not linked to this repository.
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
           IMAGE_REGISTRY: ${{ env.REGISTRY }}
           IMAGE_NAMESPACE: ${{ env.IMAGE_NAMESPACE }}
           IMAGE_TAG: ${{ github.sha }}
@@ -33,10 +36,22 @@ jobs:
           $serverEnv = 'D:\services\ragmanage\.env'
           if (-not (Test-Path $serverEnv)) { throw "Missing production env file: $serverEnv" }
           Set-Location $deployRoot
+          # Fail before building images when the runner service cannot reach Docker Desktop.
+          # The Docker named pipe is protected by the docker-users group on Windows.
+          docker info *> $null
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Docker daemon is unavailable to the runner account. Run the runner under a Docker-enabled user or add its service identity to docker-users, then restart the runner service.'
+          }
           $env:IMAGE_REGISTRY = $env:IMAGE_REGISTRY
           $env:IMAGE_NAMESPACE = $env:IMAGE_NAMESPACE
           $env:IMAGE_TAG = $env:IMAGE_TAG
-          $env:GITHUB_TOKEN | docker login ghcr.io --username $env:GITHUB_ACTOR --password-stdin
+          # Validate interpolation before any build or migration so missing deployment settings are reported early.
+          docker compose --env-file $serverEnv -f infra\compose\prod.yaml config --quiet
+          if ($LASTEXITCODE -ne 0) { throw 'Production Compose configuration is invalid.' }
+          $env:GHCR_TOKEN | docker login ghcr.io --username $env:GHCR_USERNAME --password-stdin
+          if ($LASTEXITCODE -ne 0) {
+            throw 'GHCR login failed. Set repository secret GHCR_TOKEN to a token with read:packages and write:packages, and grant the package access to this repository.'
+          }
           docker build --tag "$env:IMAGE_REGISTRY/$env:IMAGE_NAMESPACE/api:$env:IMAGE_TAG" --file backend/Dockerfile backend
           docker push "$env:IMAGE_REGISTRY/$env:IMAGE_NAMESPACE/api:$env:IMAGE_TAG"
           docker build --tag "$env:IMAGE_REGISTRY/$env:IMAGE_NAMESPACE/frontend:$env:IMAGE_TAG" --file frontend/Dockerfile .

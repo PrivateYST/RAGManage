@@ -41,7 +41,9 @@ Linux/macOS 可手动复制 `.env.example`，为 POSTGRES_PASSWORD 填入随机�
 ### 模型网关与 API Key
 
 API Key 从 Open WebUI 的“账号 → API 密钥”创建，写入本机或部署环境的
-`MODEL_GATEWAY_API_KEY`。API 和 Worker 使用 `Authorization: Bearer` 调用网关；
+`MODEL_GATEWAY_API_KEY`。部署可以在暂未拿到密钥时先启动，API 和 Worker 会在模型操作时
+以 `MODEL_GATEWAY_API_KEY_NOT_CONFIGURED` 明确失败；配置密钥后才会使用
+`Authorization: Bearer` 调用网关；
 嵌入调用 OpenAI 兼容的 `/api/embeddings`，模型摘要通过受认证的
 `/ollama/api/tags` 获取。`.env` 中 `MODEL_GATEWAY_ALLOWED_MODELS` 是业务侧白名单。
 业务数据库仅保存 `env:MODEL_GATEWAY_API_KEY` 这一引用，密钥明文不进入数据库和 Git。
