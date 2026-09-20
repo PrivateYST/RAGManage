@@ -76,6 +76,8 @@ export const useAuthStore = defineStore('auth', () => {
   async function signOut(): Promise<void> {
     await logout().catch(() => undefined)
     context.value = null
+    // 清除初始化标记，下一次进入应用时重新校验浏览器中的 session。
+    initialized.value = false
     activeSpaceId.value = ''
     localStorage.removeItem('ragmanage_active_space_id')
   }

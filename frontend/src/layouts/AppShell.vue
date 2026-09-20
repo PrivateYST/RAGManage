@@ -65,13 +65,14 @@ const iconMap: Record<string, Component> = {
 
 const topLevelMenus = computed(() =>
   auth.menus.filter(
-    item => (item.kind === 'menu' || item.kind === 'directory') && item.parent_id === null,
+    (item) => (item.kind === 'menu' || item.kind === 'directory') && item.parent_id === null,
   ),
 )
-const childMenus = (parentId: string) => auth.menus.filter(item => item.parent_id === parentId)
-function isActive(path: string | null) {
-  return path === route.path || (path !== '/' && path && route.path.startsWith(`${path}/`))
-}
+/** 目录下只展示可导航菜单；按钮权限供页面操作鉴权使用，不能伪装成页面链接。 */
+const childMenus = (parentId: string) =>
+  auth.menus.filter((item) => item.parent_id === parentId && item.kind === 'menu')
+const isActive = (path: string | null) =>
+  path === route.path || (path !== '/' && path && route.path.startsWith(`${path}/`))
 const isOpen = (code: string) => openGroups.value.has(code)
 const userInitial = computed(() => auth.user?.display_name?.slice(0, 1) || 'U')
 const userRoleLabel = computed(() =>
@@ -83,11 +84,9 @@ const activeSpaceId = computed({
 })
 
 function toggle(code: string): void {
-  if (collapsed.value)
-    collapsed.value = false
+  if (collapsed.value) collapsed.value = false
   const next = new Set(openGroups.value)
-  if (next.has(code))
-    next.delete(code)
+  if (next.has(code)) next.delete(code)
   else next.add(code)
   openGroups.value = next
 }
@@ -111,8 +110,7 @@ function openPasswordDialog(): void {
 }
 
 function closePasswordDialog(): void {
-  if (!passwordBusy.value)
-    passwordOpen.value = false
+  if (!passwordBusy.value) passwordOpen.value = false
 }
 
 async function submitPasswordChange(): Promise<void> {
@@ -134,11 +132,9 @@ async function submitPasswordChange(): Promise<void> {
       await auth.signOut()
       await router.push('/login')
     }, 900)
-  }
-  catch (cause) {
+  } catch (cause) {
     passwordError.value = cause instanceof Error ? cause.message : '密码修改失败'
-  }
-  finally {
+  } finally {
     passwordBusy.value = false
   }
 }
@@ -147,11 +143,10 @@ function handleProfileFocusOut(event: FocusEvent): void {
   const container = event.currentTarget
   const nextTarget = event.relatedTarget
   if (
-    container instanceof HTMLElement
-    && !(nextTarget instanceof Node && container.contains(nextTarget))
-  ) {
+    container instanceof HTMLElement &&
+    !(nextTarget instanceof Node && container.contains(nextTarget))
+  )
     closeProfileMenu()
-  }
 }
 
 async function signOut(): Promise<void> {
@@ -171,9 +166,7 @@ async function signOut(): Promise<void> {
         </div>
       </div>
       <div v-if="!collapsed" class="sidebar-workspace">
-        <div class="sidebar-label">
-          工作空间
-        </div>
+        <div class="sidebar-label">工作空间</div>
         <select v-model="activeSpaceId" class="space-select" aria-label="选择客户空间">
           <option v-for="space in auth.spaces" :key="space.id" :value="space.id">
             {{ space.name }}
@@ -201,7 +194,8 @@ async function signOut(): Promise<void> {
             >
               <component :is="iconMap[item.icon || '']" :size="17" /><span v-if="!collapsed">{{
                 item.name
-              }}</span><ChevronDown v-if="!collapsed && isOpen(item.code)" :size="15" /><ChevronRight
+              }}</span
+              ><ChevronDown v-if="!collapsed && isOpen(item.code)" :size="15" /><ChevronRight
                 v-else-if="!collapsed"
                 :size="15"
               />
@@ -221,9 +215,7 @@ async function signOut(): Promise<void> {
         </template>
       </nav>
       <div class="sidebar-bottom">
-        <div class="service-status">
-          <i /><span v-if="!collapsed">服务正常</span>
-        </div>
+        <div class="service-status"><i /><span v-if="!collapsed">服务正常</span></div>
         <button
           class="collapse-button"
           :title="collapsed ? '展开侧栏' : '收起侧栏'"
@@ -231,7 +223,8 @@ async function signOut(): Promise<void> {
         >
           <PanelLeftOpen v-if="collapsed" :size="17" /><PanelLeftClose v-else :size="17" /><span
             v-if="!collapsed"
-          >收起侧栏</span>
+            >收起侧栏</span
+          >
         </button>
       </div>
     </aside>
@@ -260,7 +253,10 @@ async function signOut(): Promise<void> {
               @click="openProfileMenu"
             >
               <span class="user-avatar">{{ userInitial }}</span>
-              <span class="header-user"><strong>{{ auth.user?.display_name || '用户' }}</strong><small>{{ userRoleLabel }}</small></span>
+              <span class="header-user"
+                ><strong>{{ auth.user?.display_name || '用户' }}</strong
+                ><small>{{ userRoleLabel }}</small></span
+              >
               <ChevronDown :size="15" :class="{ 'profile-chevron-open': profileOpen }" />
             </button>
             <div v-if="profileOpen" class="profile-menu" role="menu">
@@ -283,12 +279,8 @@ async function signOut(): Promise<void> {
     <section class="dialog-card password-dialog" aria-labelledby="password-dialog-title">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">
-            账号安全
-          </p>
-          <h2 id="password-dialog-title">
-            修改密码
-          </h2>
+          <p class="eyebrow">账号安全</p>
+          <h2 id="password-dialog-title">修改密码</h2>
         </div>
         <button
           class="dialog-close"
@@ -300,26 +292,29 @@ async function signOut(): Promise<void> {
         </button>
       </div>
       <form @submit.prevent="submitPasswordChange">
-        <label>当前密码<input
-          v-model="currentPassword"
-          type="password"
-          autocomplete="current-password"
-          required
-        ></label>
-        <label>新密码<input
-          v-model="newPassword"
-          type="password"
-          autocomplete="new-password"
-          minlength="8"
-          required
-        ></label>
-        <label>确认新密码<input
-          v-model="confirmPassword"
-          type="password"
-          autocomplete="new-password"
-          minlength="8"
-          required
-        ></label>
+        <label
+          >当前密码<input
+            v-model="currentPassword"
+            type="password"
+            autocomplete="current-password"
+            required
+        /></label>
+        <label
+          >新密码<input
+            v-model="newPassword"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            required
+        /></label>
+        <label
+          >确认新密码<input
+            v-model="confirmPassword"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            required
+        /></label>
         <p v-if="passwordError" class="field-error">
           {{ passwordError }}
         </p>
@@ -333,8 +328,8 @@ async function signOut(): Promise<void> {
             :disabled="passwordBusy"
             @click="closePasswordDialog"
           >
-            取消
-          </button><button class="primary-button" type="submit" :disabled="passwordBusy">
+            取消</button
+          ><button class="primary-button" type="submit" :disabled="passwordBusy">
             {{ passwordBusy ? '提交中…' : '确认修改' }}
           </button>
         </div>
