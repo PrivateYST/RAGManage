@@ -16,7 +16,8 @@ from typing import Any
 import asyncpg
 from cryptography.fernet import Fernet, InvalidToken
 
-API_KEY_PREFIX = "rmk_"
+# 客户网关 Key 采用通用的 OpenAI 兼容格式；鉴权仍以完整 Key 的哈希为准。
+API_KEY_PREFIX = "sk-"
 # 模型与检索超时总计低于该值；超过后视为进程中断并释放持久化预留。
 RESERVATION_STALE_AFTER_MINUTES = 10
 
@@ -26,7 +27,7 @@ class ApiKeyQuotaExceededError(ValueError):
 
 
 def generate_api_key() -> tuple[str, str, str]:
-    """生成一次性展示的随机 Key，并返回明文、展示前缀和哈希。"""
+    """生成一次性展示的 ``sk-`` 网关 Key，并返回明文、展示前缀和哈希。"""
     raw_key = f"{API_KEY_PREFIX}{secrets.token_urlsafe(32)}"
     prefix = f"{raw_key[:12]}…{raw_key[-4:]}"
     return raw_key, prefix, hash_api_key(raw_key)

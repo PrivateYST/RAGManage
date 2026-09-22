@@ -36,8 +36,8 @@ const { form, error, submit } = useApiKeyCreateDialog(props, (event, payload) =>
         </button>
       </header>
       <p class="api-key-dialog-description">
-        系统会为医院创建一个隐藏的 Open WebUI 服务账号，并生成一把原生 API
-        Key；医院员工无需逐个注册。
+        系统会为医院生成一把 `sk-` 格式的模型网关 API Key；医院员工无需逐个注册，
+        由 RAGManage 统一校验、限额并转发到 Open WebUI。
       </p>
       <form class="api-key-form" @submit.prevent="submit">
         <label

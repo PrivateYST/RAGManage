@@ -361,25 +361,27 @@ async function signOut(): Promise<void> {
                 aria-hidden="true"
               />
             </button>
-            <div
-              v-if="profileOpen"
-              class="absolute right-0 top-full z-20 mt-[4px] w-[176px] rounded-lg border border-border bg-card p-[6px] shadow-[0_1px_2px_rgb(63_45_91_/_4%),0_8px_24px_rgb(79_58_116_/_6%)]"
-              role="menu"
-            >
-              <button
-                class="flex min-h-[33px] w-full items-center gap-[8px] rounded-md border-0 bg-transparent px-[8px] text-left text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                role="menuitem"
-                @click="openPasswordDialog"
+            <!-- 顶部内边距作为悬停桥接区，避免移向菜单时经过空隙触发 mouseleave。 -->
+            <div v-if="profileOpen" class="absolute right-0 top-full z-20 w-[176px] pt-[4px]">
+              <div
+                class="rounded-lg border border-border bg-card p-[6px] shadow-[0_1px_2px_rgb(63_45_91_/_4%),0_8px_24px_rgb(79_58_116_/_6%)]"
+                role="menu"
               >
-                <KeyRound :size="15" aria-hidden="true" />修改密码
-              </button>
-              <button
-                class="flex min-h-[33px] w-full items-center gap-[8px] rounded-md border-0 bg-transparent px-[8px] text-left text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                role="menuitem"
-                @click="signOut"
-              >
-                <LogOut :size="15" aria-hidden="true" />退出登录
-              </button>
+                <button
+                  class="flex min-h-[33px] w-full items-center gap-[8px] rounded-md border-0 bg-transparent px-[8px] text-left text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  role="menuitem"
+                  @click="openPasswordDialog"
+                >
+                  <KeyRound :size="15" aria-hidden="true" />修改密码
+                </button>
+                <button
+                  class="flex min-h-[33px] w-full items-center gap-[8px] rounded-md border-0 bg-transparent px-[8px] text-left text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  role="menuitem"
+                  @click="signOut"
+                >
+                  <LogOut :size="15" aria-hidden="true" />退出登录
+                </button>
+              </div>
             </div>
           </div>
         </div>

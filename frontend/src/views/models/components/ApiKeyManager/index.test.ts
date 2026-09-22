@@ -29,8 +29,8 @@ const companyKey: CompanyApiKey = {
   tenant_id: '3',
   tenant_name: '客户 A',
   name: '生产 Key',
-  provider: 'open_webui',
-  key_prefix: 'rmk_masked',
+  provider: 'local',
+  key_prefix: 'sk-masked',
   token_limit: 1000,
   token_used: 34,
   token_reserved: 0,
@@ -44,12 +44,12 @@ const companyKey: CompanyApiKey = {
   revoked_at: null,
 }
 
-const createdKey: CreatedApiKey = { ...companyKey, raw_key: 'rmk_once_only_secret' }
+const createdKey: CreatedApiKey = { ...companyKey, raw_key: 'sk-once-only-secret' }
 const secondCompanyKey: CompanyApiKey = {
   ...companyKey,
   id: '10',
   name: '备用 Key',
-  key_prefix: 'rmk_second',
+  key_prefix: 'sk-second',
 }
 
 /** 创建可手动决定返回顺序的 Promise，用于复现快速切换时的网络竞态。 */
@@ -155,7 +155,7 @@ describe('api key manager', () => {
       token_limit: 2000,
       expires_at: null,
     })
-    expect(document.body.textContent).toContain('rmk_once_only_secret')
+    expect(document.body.textContent).toContain('sk-once-only-secret')
     expect(document.body.textContent).toContain('仅显示一次')
   })
 

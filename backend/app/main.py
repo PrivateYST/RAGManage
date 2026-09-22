@@ -1209,10 +1209,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/v1/api-keys", status_code=201)
     async def create_api_key(payload: ApiKeyCreate, request: Request) -> dict[str, Any]:
-        """为医院创建一次性展示的 Open WebUI 原生 Key，并绑定 Token 配额。
+        """为医院创建一次性展示的 ``sk-`` 网关 Key，并绑定 Token 配额。
 
-        启用 Open WebUI provisioning 时，远端服务账号和 ``sk-`` Key 是真实来源；
-        未启用时保留本地生成模式，便于开发环境和迁移期间继续运行旧数据。
+        默认模式由 RAGManage 生成 ``sk-`` 格式的客户网关 Key；只有显式开启
+        Open WebUI provisioning 时，才会改为从远端账号生成原生 Key。
         """
         context = await _authenticated_user(config, request)
         _require_platform_admin(context)
@@ -2701,6 +2701,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/v1/admin/tenants")
     async def admin_tenants(request: Request) -> dict[str, Any]:
+        """返回客户空间及其当前凭据摘要，供平台管理员配置和发放客户 Key。"""
         context = await _authenticated_user(config, request)
         if context["user"]["platform_role"] != "platform_admin":
             raise HTTPException(status_code=403, detail="只有平台管理员可以查看客户空间")
@@ -2710,11 +2711,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 """
                 SELECT t.id::text, t.code, t.name, t.status, t.created_at,
                        count(DISTINCT tm.user_id)::int AS member_count,
-                       count(DISTINCT kb.id)::int AS knowledge_base_count
+                       count(DISTINCT kb.id)::int AS knowledge_base_count,
+                       current_key.id::text AS api_key_id,
+                       current_key.status AS api_key_status,
+                       current_key.key_prefix AS api_key_prefix,
+                       current_key.token_limit AS api_key_token_limit,
+                       current_key.token_used AS api_key_token_used,
+                       current_key.token_remaining AS api_key_token_remaining,
+                       current_key.expires_at AS api_key_expires_at
                 FROM tenants t LEFT JOIN tenant_members tm
                   ON tm.tenant_id = t.id AND tm.status = 'active'
                 LEFT JOIN knowledge_bases kb ON kb.tenant_id = t.id AND kb.status <> 'disabled'
-                GROUP BY t.id ORDER BY t.created_at DESC
+                LEFT JOIN LATERAL (
+                  SELECT ak.id,
+                         CASE WHEN ak.status = 'active' AND ak.expires_at IS NOT NULL
+                                   AND ak.expires_at <= now()
+                              THEN 'expired' ELSE ak.status END AS status,
+                         ak.key_prefix,
+                         ak.token_limit,
+                         ak.token_used,
+                         GREATEST(0, ak.token_limit - ak.token_used - ak.token_reserved)
+                           AS token_remaining,
+                         ak.expires_at
+                  FROM api_keys ak
+                  WHERE ak.tenant_id = t.id AND ak.deleted_at IS NULL
+                  ORDER BY ak.created_at DESC, ak.id DESC
+                  LIMIT 1
+                ) current_key ON true
+                GROUP BY t.id, current_key.id, current_key.status, current_key.key_prefix,
+                         current_key.token_limit, current_key.token_used,
+                         current_key.token_remaining, current_key.expires_at
+                ORDER BY t.created_at DESC
                 """
             )
             return {"items": _rows(rows)}

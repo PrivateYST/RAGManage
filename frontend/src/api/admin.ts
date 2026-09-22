@@ -45,6 +45,14 @@ export interface TenantRow {
   member_count: number
   knowledge_base_count: number
   created_at: string
+  /** 当前未删除客户 Key 的管理摘要；完整 Key 永远通过受保护接口读取。 */
+  api_key_id: string | null
+  api_key_status: 'active' | 'disabled' | 'revoked' | 'expired' | null
+  api_key_prefix: string | null
+  api_key_token_limit: number | null
+  api_key_token_used: number | null
+  api_key_token_remaining: number | null
+  api_key_expires_at: string | null
 }
 
 export function fetchKnowledgeBases(tenantId?: string): Promise<{ items: KnowledgeBaseRow[] }> {

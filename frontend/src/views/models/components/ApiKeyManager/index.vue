@@ -47,7 +47,7 @@ const {
       <div>
         <strong class="block text-[13px] font-semibold">医院模型网关凭据</strong>
         <small class="mt-[2px] block text-[10px] text-muted-foreground"
-          >每家医院一把 Open WebUI 原生 Key；额度用尽、到期、停用或删除后会立即停止调用。</small
+          >每家医院一把 `sk-` 格式的网关 Key；额度用尽、到期、停用或删除后会立即停止调用。</small
         >
       </div>
       <div class="flex gap-[8px] max-sm:justify-end">

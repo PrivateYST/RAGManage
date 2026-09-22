@@ -119,7 +119,7 @@ class FakeManagementConnection:
             "id": "9",
             "tenant_id": "3",
             "name": "生产 Key",
-            "key_prefix": "rmk_masked",
+            "key_prefix": "sk-masked",
             "token_limit": 1000,
             "token_used": 0,
             "token_reserved": 0,
@@ -260,7 +260,7 @@ def test_generated_key_only_persists_hash_and_masked_prefix() -> None:
     """随机明文仅返回给创建者，哈希和脱敏前缀不能还原可调用凭据。"""
     raw_key, prefix, key_hash = generate_api_key()
 
-    assert raw_key.startswith("rmk_")
+    assert raw_key.startswith("sk-")
     assert prefix != raw_key
     assert raw_key not in prefix
     assert key_hash == hash_api_key(raw_key)
@@ -269,7 +269,7 @@ def test_generated_key_only_persists_hash_and_masked_prefix() -> None:
 
 def test_api_key_encryption_round_trip_does_not_store_plaintext() -> None:
     """复制密文可跨请求解密，但密文本身不能直接暴露可调用 Key。"""
-    raw_key = "rmk_test-secret"
+    raw_key = "sk-test-secret"
     ciphertext = encrypt_api_key(raw_key, "stable-test-secret")
 
     assert raw_key not in ciphertext
@@ -278,7 +278,7 @@ def test_api_key_encryption_round_trip_does_not_store_plaintext() -> None:
 
 def test_platform_admin_can_reveal_encrypted_api_key(monkeypatch: Any) -> None:
     """管理员复制接口返回完整 Key，并记录脱敏审计，不允许匿名调用。"""
-    raw_key = "rmk_copyable-secret"
+    raw_key = "sk-copyable-secret"
     connection = FakeRevealConnection(
         encrypt_api_key(raw_key, Settings().api_key_encryption_secret_value)
     )
@@ -716,7 +716,7 @@ def test_platform_admin_creates_one_time_key_without_persisting_plaintext(monkey
 
     assert response.status_code == 201
     raw_key = response.json()["raw_key"]
-    assert raw_key.startswith("rmk_")
+    assert raw_key.startswith("sk-")
     assert response.json()["token_remaining"] == 1000
     tenant_lookup_index = next(
         index

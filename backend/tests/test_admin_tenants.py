@@ -51,6 +51,39 @@ class FakeConnection:
         self.closed = True
 
 
+class FakeTenantListConnection:
+    """客户空间列表夹具：验证 Key 摘要返回而不模拟完整数据库驱动。"""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+        assert "current_key.key_prefix" in query
+        assert "api_keys ak" in query
+        assert args == ()
+        return [
+            {
+                "id": "42",
+                "code": "customer-a",
+                "name": "客户 A",
+                "status": "active",
+                "created_at": "2026-09-17T00:00:00Z",
+                "member_count": 3,
+                "knowledge_base_count": 2,
+                "api_key_id": "9",
+                "api_key_status": "active",
+                "api_key_prefix": "sk-customer…1234",
+                "api_key_token_limit": 1000,
+                "api_key_token_used": 120,
+                "api_key_token_remaining": 880,
+                "api_key_expires_at": None,
+            }
+        ]
+
+    async def close(self) -> None:
+        self.closed = True
+
+
 def test_create_tenant_grants_creator_space_admin_membership(monkeypatch) -> None:
     connection = FakeConnection()
     context = {"user": {"id": "7", "platform_role": "platform_admin"}}
@@ -71,4 +104,23 @@ def test_create_tenant_grants_creator_space_admin_membership(monkeypatch) -> Non
     membership_query, tenant_id, user_id, role_id = connection.execute_calls[0]
     assert "INSERT INTO tenant_members" in membership_query
     assert (tenant_id, user_id, role_id) == (42, 7, 3)
+    assert connection.closed
+
+
+def test_admin_tenant_list_includes_key_summary_without_plaintext(monkeypatch) -> None:
+    """空间管理列表返回脱敏 Key 摘要，不能把完整客户凭据放进列表响应。"""
+    connection = FakeTenantListConnection()
+    context = {"user": {"id": "7", "platform_role": "platform_admin"}}
+    monkeypatch.setattr("app.main._authenticated_user", AsyncMock(return_value=context))
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.get("/api/v1/admin/tenants")
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["api_key_id"] == "9"
+    assert item["api_key_prefix"] == "sk-customer…1234"
+    assert item["api_key_token_remaining"] == 880
+    assert "raw_key" not in item
     assert connection.closed

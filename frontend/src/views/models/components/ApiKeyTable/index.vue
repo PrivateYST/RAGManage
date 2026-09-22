@@ -34,9 +34,9 @@ const columns: AppTableColumn<CompanyApiKey>[] = [
       class="flex min-h-[58px] items-center justify-between gap-[16px] border-b border-border px-[16px] py-[10px]"
     >
       <div>
-        <strong class="block text-[13px] font-semibold">医院 Open WebUI API Key</strong>
+        <strong class="block text-[13px] font-semibold">医院模型网关 API Key</strong>
         <small class="mt-[2px] block text-[10px] text-muted-foreground"
-          >每家医院共用一把原生 `sk-` Key；员工无需注册 Open WebUI 用户。</small
+          >每家医院共用一把 `sk-` 格式的网关 Key；员工无需注册 Open WebUI 用户。</small
         >
       </div>
       <span class="text-[11px] text-muted-foreground">共 {{ items.length }} 个</span>
@@ -64,7 +64,7 @@ const columns: AppTableColumn<CompanyApiKey>[] = [
               <KeyRound :size="13" />{{ item.key_prefix }}
             </span>
             <small class="mt-[4px] block text-[10px] text-muted-foreground">
-              {{ item.provider === 'open_webui' ? 'Open WebUI 原生 Key' : '本地兼容 Key' }}
+              {{ item.provider === 'open_webui' ? 'Open WebUI 原生 Key' : 'RAGManage 网关 Key' }}
             </small>
             <button
               class="mt-[6px] inline-flex items-center gap-[4px] border-0 bg-transparent p-0 text-[10px] text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"

@@ -12,9 +12,9 @@ const apiKey: CreatedApiKey = {
   tenant_id: '3',
   tenant_name: '客户 A',
   name: '生产 Key',
-  provider: 'open_webui',
-  key_prefix: 'rmk_masked',
-  raw_key: 'rmk_once_only_secret',
+  provider: 'local',
+  key_prefix: 'sk-masked',
+  raw_key: 'sk-once-only-secret',
   token_limit: 1000,
   token_used: 0,
   token_reserved: 0,
@@ -62,7 +62,7 @@ describe('api key reveal dialog', () => {
     copyButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await flushPromises()
 
-    expect(writeText).toHaveBeenCalledWith('rmk_once_only_secret')
+    expect(writeText).toHaveBeenCalledWith('sk-once-only-secret')
     expect(wrapper.emitted('copied')).toHaveLength(1)
     expect(toastError).not.toHaveBeenCalled()
     wrapper.unmount()
@@ -91,7 +91,7 @@ describe('api key reveal dialog', () => {
     await flushPromises()
 
     expect(toastError).toHaveBeenCalledWith('复制失败', '请手动选择并复制 API Key。')
-    expect(document.body.textContent).toContain('rmk_once_only_secret')
+    expect(document.body.textContent).toContain('sk-once-only-secret')
     expect(wrapper.emitted('copied')).toBeUndefined()
     expect(document.body.querySelector('.api-key-raw-value button')?.hasAttribute('disabled')).toBe(
       false,

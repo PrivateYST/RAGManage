@@ -1,7 +1,9 @@
 <!-- 平台管理工作区：负责数据表格、创建表单与用户停用确认的页面编排。 -->
 <script setup lang="ts">
 import type { KnowledgeBaseRow, MenuRow, TenantRow, UserRow } from '@/api/admin'
+import type { CreatedApiKey } from '@/api/apiKeys'
 import type { AppTableColumn } from '@/components'
+import type { ApiKeyCreatePayload } from '@/views/models/components/ApiKeyCreateDialog/type'
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
@@ -15,12 +17,15 @@ import {
   updateMenu,
   updateUser,
 } from '@/api/admin'
+import { createApiKey, fetchApiKeyPlaintext } from '@/api/apiKeys'
 import {
   AppConfirmDialog,
   AppDialog,
   AppTable,
+  Copy,
   FileText,
   GitBranch,
+  KeyRound,
   ListChecks,
   Menu as MenuIcon,
   Plus,
@@ -30,6 +35,8 @@ import {
 } from '@/components'
 import { useAppToast } from '@/composables/useToast'
 import { useAuthStore } from '@/store/auth'
+import ApiKeyCreateDialog from '@/views/models/components/ApiKeyCreateDialog/index.vue'
+import ApiKeyRevealDialog from '@/views/models/components/ApiKeyRevealDialog/index.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -47,6 +54,10 @@ const savingTenant = ref(false)
 const savingKnowledgeBase = ref(false)
 const pendingUserStatus = ref<UserRow | null>(null)
 const updatingUserStatus = ref(false)
+const selectedTenantForKey = ref<TenantRow | null>(null)
+const tenantKeyDialogOpen = ref(false)
+const tenantKeySubmitting = ref(false)
+const revealedTenantKey = ref<CreatedApiKey | null>(null)
 const userForm = ref({
   login: '',
   display_name: '',
@@ -57,6 +68,21 @@ const userForm = ref({
 })
 const tenantForm = ref({ code: '', name: '' })
 const knowledgeBaseForm = ref({ tenant_id: '', name: '', description: '', purpose: 'general' })
+
+/** 将客户 Key 的生命周期状态映射为页面文案，避免模板重复分支。 */
+function tenantKeyStatusLabel(status: TenantRow['api_key_status']): string {
+  if (status === 'active') return '已启用'
+  if (status === 'disabled') return '已停用'
+  if (status === 'expired') return '已过期'
+  if (status === 'revoked') return '已撤销'
+  return '未配置'
+}
+
+/** 生命周期状态使用与全局表格一致的语义色，停用和过期不能显示为成功状态。 */
+function tenantKeyStatusClass(status: TenantRow['api_key_status']): string {
+  return status === 'active' ? 'published' : status ? 'disabled' : ''
+}
+
 const knowledgeBaseColumns: AppTableColumn<KnowledgeBaseRow>[] = [
   { key: 'name', title: '知识库名称' },
   { key: 'purpose', title: '用途', field: 'purpose' },
@@ -69,8 +95,10 @@ const tenantColumns: AppTableColumn<TenantRow>[] = [
   { key: 'code', title: '空间编码', field: 'code' },
   { key: 'members', title: '成员数', field: 'member_count' },
   { key: 'knowledgeBases', title: '知识库数', field: 'knowledge_base_count' },
+  { key: 'apiKey', title: '客户 API Key' },
   { key: 'status', title: '状态' },
   { key: 'created', title: '创建时间' },
+  { key: 'actions', title: '操作' },
 ]
 const menuColumns: AppTableColumn<MenuRow>[] = [
   { key: 'name', title: '菜单名称' },
@@ -286,6 +314,45 @@ async function confirmUserStatus(): Promise<void> {
   }
 }
 
+/** 打开客户空间的 Key 配置表单；实际创建仍由后端执行平台管理员校验。 */
+function openTenantKeyDialog(tenant: TenantRow): void {
+  if (tenant.status !== 'active' || tenant.api_key_id) return
+  selectedTenantForKey.value = tenant
+  tenantKeyDialogOpen.value = true
+}
+
+/** 为客户空间生成客户级 ``sk-`` Key，并交给一次性明文展示弹窗。 */
+async function saveTenantKey(payload: ApiKeyCreatePayload): Promise<void> {
+  tenantKeySubmitting.value = true
+  try {
+    revealedTenantKey.value = await createApiKey(payload)
+    tenantKeyDialogOpen.value = false
+    toast.success('客户 API Key 已配置', '请立即复制并通过安全渠道发放给客户。')
+    await loadData()
+  } catch (cause) {
+    toast.error(cause instanceof Error ? cause.message : '客户 API Key 配置失败')
+  } finally {
+    tenantKeySubmitting.value = false
+  }
+}
+
+/** 从后端读取完整 Key 并复制；空间列表始终只展示脱敏前缀。 */
+async function copyTenantKey(tenant: TenantRow): Promise<void> {
+  if (!tenant.api_key_id) return
+  try {
+    const result = await fetchApiKeyPlaintext(tenant.api_key_id)
+    await navigator.clipboard.writeText(result.raw_key)
+    toast.success('完整客户 API Key 已复制', '请通过安全渠道发放，页面不会保存明文。')
+  } catch (cause) {
+    toast.error(cause instanceof Error ? cause.message : '客户 API Key 复制失败')
+  }
+}
+
+/** 关闭客户 Key 的一次性明文展示，并清除页面状态。 */
+function closeTenantKeyReveal(): void {
+  revealedTenantKey.value = null
+}
+
 function handlePrimaryAction(): void {
   if (route.path === '/knowledge-bases') {
     knowledgeBaseForm.value = {
@@ -397,9 +464,43 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
             row.status === 'active' ? '启用' : '停用'
           }}</span></template
         >
+        <template #cell-apiKey="{ row }">
+          <div class="flex min-w-[170px] flex-col gap-[3px]">
+            <span
+              class="status-pill w-fit"
+              :class="tenantKeyStatusClass(row.api_key_status)"
+            >
+              {{ tenantKeyStatusLabel(row.api_key_status) }}
+            </span>
+            <code v-if="row.api_key_prefix">{{ row.api_key_prefix }}</code>
+            <small v-if="row.api_key_id">
+              已用 {{ (row.api_key_token_used ?? 0).toLocaleString() }} /
+              剩余 {{ (row.api_key_token_remaining ?? 0).toLocaleString() }} Token
+            </small>
+          </div>
+        </template>
         <template #cell-created="{ row }">{{
           new Date(row.created_at).toLocaleDateString('zh-CN')
         }}</template>
+        <template #cell-actions="{ row }">
+          <button
+            v-if="!row.api_key_id && row.status === 'active'"
+            class="table-action inline-flex items-center gap-[4px]"
+            type="button"
+            @click="openTenantKeyDialog(row)"
+          >
+            <KeyRound :size="13" />配置 Key
+          </button>
+          <button
+            v-else-if="row.api_key_id"
+            class="table-action inline-flex items-center gap-[4px]"
+            type="button"
+            @click="copyTenantKey(row)"
+          >
+            <Copy :size="13" />复制完整 Key
+          </button>
+          <span v-else class="text-[11px] text-muted-foreground">空间已停用</span>
+        </template>
       </AppTable>
     </div>
     <div v-else-if="route.path === '/system/menus'" class="content-card table-card">
@@ -590,6 +691,18 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
       </div>
     </form>
   </AppDialog>
+  <ApiKeyCreateDialog
+    :open="tenantKeyDialogOpen"
+    :tenants="selectedTenantForKey ? [selectedTenantForKey] : []"
+    :submitting="tenantKeySubmitting"
+    @close="tenantKeyDialogOpen = false"
+    @submit="saveTenantKey"
+  />
+  <ApiKeyRevealDialog
+    :api-key="revealedTenantKey"
+    @close="closeTenantKeyReveal"
+    @copied="toast.success('客户 API Key 已复制')"
+  />
   <AppConfirmDialog
     :open="Boolean(pendingUserStatus)"
     :title="pendingUserStatus ? `确认停用“${pendingUserStatus.display_name}”？` : '确认停用用户'"

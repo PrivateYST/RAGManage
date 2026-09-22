@@ -49,7 +49,7 @@ const {
         <p class="eyebrow">系统配置 / 模型服务</p>
         <h1>模型与运行配置</h1>
         <p class="page-description">
-          统一管理全局模型网关、知识库 Profile，以及按医院下发的 Open WebUI 原生 API Key。
+          统一管理全局模型网关、知识库 Profile，以及按医院下发的 `sk-` 格式网关 API Key。
         </p>
       </div>
       <div
