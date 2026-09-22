@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-/* eslint-disable style/arrow-parens */
 /**
  * 动态路由回归测试：验证菜单注册、权限过滤、重复清理和刷新时的守卫行为。
  * 这些用例防止业务路由重新硬编码，或在退出/刷新后意外暴露旧菜单。

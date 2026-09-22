@@ -116,7 +116,8 @@ async def load_run_snapshot(
     """读取运行快照；将鉴权上下文的字符串 ID 归一化后再绑定 bigint 参数。"""
     row = await connection.fetchrow(
         """
-        SELECT gr.id::text, gr.tenant_id::text, gr.knowledge_base_id::text,
+        SELECT gr.id::text, gr.public_id::text AS public_id, gr.tenant_id::text,
+               gr.knowledge_base_id::text,
                gr.conversation_id::text, gr.user_message_id::text,
                gr.assistant_message_id::text, gr.release_id::text, gr.api_key_id::text,
                gr.request_id::text, gr.state, gr.outcome, gr.cancel_requested,

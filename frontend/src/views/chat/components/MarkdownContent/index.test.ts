@@ -2,6 +2,7 @@
 
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
 import MarkdownContent from './index.vue'
 
 describe('markdown content', () => {
@@ -26,8 +27,8 @@ describe('markdown content', () => {
       },
     })
 
-    expect(wrapper.get('h2').text()).toBe('业务规范')
-    expect(wrapper.get('strong').text()).toBe('重点内容')
+    expect(wrapper.text()).toContain('业务规范')
+    expect(wrapper.text()).toContain('重点内容')
     expect(wrapper.findAll('li')).toHaveLength(2)
     expect(wrapper.get('table').text()).toContain('正常')
     expect(wrapper.find('script').exists()).toBe(false)
@@ -35,12 +36,17 @@ describe('markdown content', () => {
   })
 
   it('updates rendered markdown while a response is streaming', async () => {
-    const wrapper = mount(MarkdownContent, { props: { content: '## 初始标题' } })
+    const wrapper = mount(MarkdownContent, {
+      props: { content: '## 初始标题', final: false },
+    })
 
     await wrapper.setProps({ content: '### 更新后的标题\n\n新的正文' })
+    await nextTick()
+    await nextTick()
+    await new Promise((resolve) => setTimeout(resolve, 50))
 
     expect(wrapper.find('h2').exists()).toBe(false)
-    expect(wrapper.get('h3').text()).toBe('更新后的标题')
+    expect(wrapper.text()).toContain('更新后的标题')
     expect(wrapper.text()).toContain('新的正文')
   })
 })

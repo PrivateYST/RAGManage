@@ -3,7 +3,7 @@
 .runtime-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 15px 18px; background: #fafafa; border-bottom: 1px solid var(--border); }
 .runtime-form label { display: grid; gap: 5px; color: #52525b; font-size: 11px; }
 .runtime-form input, .runtime-form select, .runtime-form textarea { width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: #27272a; font-size: 12px; }
-.runtime-form input, .runtime-form select { height: 34px; padding: 0 9px; }
+.runtime-form input, .runtime-form select { height: var(--control-height); padding: 0 9px; }
 .runtime-form textarea { min-height: 72px; padding: 8px 9px; resize: vertical; }
 .runtime-number-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .runtime-form > label:nth-of-type(4) { grid-column: 1 / 3; }

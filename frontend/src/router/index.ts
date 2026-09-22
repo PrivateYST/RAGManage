@@ -4,7 +4,6 @@
  * 后端返回的菜单只携带路径与权限元数据，组件映射仍由前端维护，避免服务端
  * 任意字符串被当作可执行模块加载。业务路由在登录态恢复后注册，退出登录时清理。
  */
-/* eslint-disable style/arrow-parens */
 import type { Component } from 'vue'
 import type { RouteLocationRaw, Router, RouteRecordRaw, RouterHistory } from 'vue-router'
 import type { MenuItem } from '@/api/auth'

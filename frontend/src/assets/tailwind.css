@@ -1,0 +1,161 @@
+/* Tailwind v4 主题与工具类入口；沿用现有基础样式，不加载 Preflight 全局重置。 */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source('../');
+
+/* 项目不启用 Tailwind Preflight，因此只补齐表单字体继承，避免浏览器默认字体破坏组件库节奏。 */
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  select:not([multiple]) {
+    height: var(--control-height);
+  }
+
+  input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']) {
+    min-height: var(--control-height);
+  }
+}
+
+/* 复用项目语义色，避免 Reka UI 组件与已有页面形成两套配色。 */
+@theme inline {
+  /* 项目采用像素级密度标尺：数字间距类直接映射为对应的 px 值。 */
+  --spacing: 1px;
+  --color-background: var(--background);
+  --color-canvas: var(--canvas);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-muted-foreground: var(--muted);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-status-up: var(--status-up);
+  --color-status-up-soft: var(--status-up-soft);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-soft: var(--status-warning-soft);
+}
+
+/*
+ * 公共业务原语集中在 Tailwind 组件层，页面只保留语义类名。
+ * 这样旧页面能够渐进迁移，同时保证按钮、卡片、表格和状态徽章遵循同一套 shadcn-vue 视觉契约。
+ */
+@layer components {
+  .primary-button {
+    @apply inline-flex items-center justify-center gap-[7px] whitespace-nowrap rounded-md border border-primary bg-primary px-[13px] text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50;
+    min-height: var(--button-height);
+    height: var(--button-height);
+  }
+
+  .secondary-button {
+    @apply inline-flex items-center justify-center gap-[7px] whitespace-nowrap rounded-md border border-border bg-background px-[13px] text-xs font-medium text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50;
+    min-height: var(--button-height);
+    height: var(--button-height);
+  }
+
+  .page-section {
+    @apply mx-auto w-full max-w-[1160px];
+  }
+
+  .page-intro {
+    @apply mb-[28px] flex items-end justify-between gap-[22px];
+  }
+
+  .eyebrow {
+    @apply mb-[7px] text-[11px] font-medium tracking-[0.04em] text-muted-foreground;
+  }
+
+  .page-description {
+    @apply mb-0 text-[13px] text-muted-foreground;
+  }
+
+  .content-card {
+    @apply rounded-lg border border-border bg-card p-[21px];
+  }
+
+  .table-card {
+    @apply overflow-hidden p-0;
+  }
+
+  .table-count {
+    @apply text-[11px] text-muted-foreground;
+  }
+
+  .status-pill {
+    @apply inline-flex min-h-[20px] items-center rounded-full bg-secondary px-[8px] text-[10px] font-medium text-muted-foreground;
+  }
+
+  .status-pill.published,
+  .status-pill.completed {
+    @apply bg-status-up-soft text-status-up;
+  }
+
+  .status-pill.disabled {
+    @apply bg-secondary text-muted-foreground;
+  }
+
+  .module-placeholder {
+    @apply flex min-h-[360px] flex-col items-center justify-center text-center text-muted-foreground;
+  }
+
+  .table-action {
+    @apply inline-flex items-center gap-[4px] border-0 bg-transparent px-0 py-[4px] text-[11px] text-muted-foreground transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  }
+
+  .loading-spinner {
+    @apply size-[22px] animate-spin rounded-full border-2 border-border border-t-foreground;
+  }
+
+  .dialog-card {
+    @apply w-full max-w-[440px] rounded-lg border border-border bg-card p-[22px] text-foreground shadow-[0_18px_48px_rgb(24_24_27_/_16%)];
+  }
+
+  .dialog-heading {
+    @apply mb-[20px] flex items-start justify-between;
+  }
+
+  .dialog-close {
+    @apply rounded-md border-0 bg-transparent p-[4px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  }
+
+  .dialog-card label {
+    @apply mt-[14px] grid gap-[8px] text-xs font-medium text-foreground;
+  }
+
+  .dialog-card input,
+  .dialog-card select,
+  .dialog-card textarea,
+  .login-card input {
+    @apply w-full rounded-md border border-input bg-background px-[10px] text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20;
+  }
+
+  .dialog-card input,
+  .dialog-card select,
+  .login-card input {
+    height: var(--control-height);
+  }
+
+  .login-card input {
+    height: var(--control-height-lg);
+  }
+
+  .dialog-card textarea {
+    @apply min-h-[88px] resize-y py-[8px];
+  }
+
+  .dialog-actions {
+    @apply mt-[24px] flex justify-end gap-[8px] border-t border-border pt-[16px];
+  }
+
+  .field-error {
+    @apply mt-[10px] text-[11px] text-destructive;
+  }
+}

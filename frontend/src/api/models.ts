@@ -23,11 +23,18 @@ export interface ModelEndpoint {
   updated_at: string
 }
 
+/** 当前模型网关 API Key 的脱敏状态；接口永不返回明文。 */
+export interface ModelGatewayKeyStatus {
+  configured: boolean
+  source: 'environment' | 'system'
+  masked: string
+}
+
 export interface IngestionProfile {
   id: string
   definition: {
     parser?: string
-    chunking?: { strategy?: string, max_chars?: number, overlap_chars?: number }
+    chunking?: { strategy?: string; max_chars?: number; overlap_chars?: number }
     preserve_locator?: boolean
   }
   definition_hash: string
@@ -44,7 +51,7 @@ export interface EmbeddingProfile {
   model_revision: string
   dimension: number
   dtype: string
-  instructions: { query?: string, document?: string }
+  instructions: { query?: string; document?: string }
   normalization: string
   definition_hash: string
   created_at: string
@@ -55,8 +62,8 @@ export interface RuntimeProfile {
   id: string
   embedding_profile_id: string
   definition: {
-    retrieval?: { mode?: string, top_k?: number, context_max_chars?: number }
-    generation?: { endpoint_id?: number, model?: string, temperature?: number }
+    retrieval?: { mode?: string; top_k?: number; context_max_chars?: number }
+    generation?: { endpoint_id?: number; model?: string; temperature?: number }
     answer_rules?: string
   }
   definition_hash: string
@@ -91,6 +98,19 @@ export interface HealthCheckResult {
 
 export function fetchModelEndpoints(): Promise<{ items: ModelEndpoint[] }> {
   return apiRequest('/api/v1/model-endpoints')
+}
+
+/** 获取当前生效的模型网关密钥来源和脱敏尾缀。 */
+export function fetchModelGatewayKey(): Promise<ModelGatewayKeyStatus> {
+  return apiRequest('/api/v1/model-gateway-key')
+}
+
+/** 替换当前 API 进程使用的模型网关密钥，明文只在请求体中传输。 */
+export function updateModelGatewayKey(apiKey: string): Promise<ModelGatewayKeyStatus> {
+  return apiRequest('/api/v1/model-gateway-key', {
+    method: 'PUT',
+    body: JSON.stringify({ api_key: apiKey }),
+  })
 }
 
 export function createModelEndpoint(payload: EndpointInput): Promise<ModelEndpoint> {
@@ -155,6 +175,6 @@ export function createRuntimeProfile(payload: {
 
 export function activateRuntimeProfile(
   id: string,
-): Promise<{ id: string, active: boolean, effect_scope: 'immediate' | 'rebuild_required' }> {
+): Promise<{ id: string; active: boolean; effect_scope: 'immediate' | 'rebuild_required' }> {
   return apiRequest(`/api/v1/runtime-profiles/${id}/activate`, { method: 'POST' })
 }

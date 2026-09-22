@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import secrets
@@ -13,6 +14,7 @@ from collections.abc import Mapping
 from typing import Any
 
 import asyncpg
+from cryptography.fernet import Fernet, InvalidToken
 
 API_KEY_PREFIX = "rmk_"
 # 模型与检索超时总计低于该值；超过后视为进程中断并释放持久化预留。
@@ -35,6 +37,26 @@ def hash_api_key(raw_key: str) -> str:
     return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
 
+def encrypt_api_key(raw_key: str, encryption_secret: str) -> str:
+    """用服务端密钥加密明文 Key，支持管理员复制但不把明文写入数据库。"""
+    cipher = _cipher(encryption_secret)
+    return cipher.encrypt(raw_key.encode("utf-8")).decode("ascii")
+
+
+def decrypt_api_key(ciphertext: str, encryption_secret: str) -> str:
+    """解密数据库中的 Key；密文损坏或密钥变化时返回稳定错误。"""
+    try:
+        return _cipher(encryption_secret).decrypt(ciphertext.encode("ascii")).decode("utf-8")
+    except (ValueError, UnicodeError, InvalidToken) as error:
+        raise ValueError("API_KEY_CIPHERTEXT_INVALID") from error
+
+
+def _cipher(encryption_secret: str) -> Fernet:
+    """从配置密钥派生固定 Fernet 密钥，避免把可逆密钥存入业务表。"""
+    material = hashlib.sha256(encryption_secret.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(material))
+
+
 async def authenticate_api_key(
     connection: asyncpg.Connection,
     raw_key: str,
@@ -42,7 +64,7 @@ async def authenticate_api_key(
     """校验公司下发的 Key，仅为命中的 Key 回收超时预留并返回身份上下文。"""
     candidate_id = await connection.fetchval(
         """
-        SELECT id FROM api_keys WHERE key_hash = $1
+        SELECT id FROM api_keys WHERE key_hash = $1 AND deleted_at IS NULL
         """,
         hash_api_key(raw_key),
     )
@@ -61,6 +83,7 @@ async def authenticate_api_key(
         WHERE ak.key_hash = $1
           AND ak.id = $2
           AND ak.status = 'active'
+          AND ak.deleted_at IS NULL
           AND (ak.expires_at IS NULL OR ak.expires_at > now())
           AND ak.token_used + ak.token_reserved < ak.token_limit
         """,
@@ -92,6 +115,7 @@ async def reserve_api_key_tokens(
             SET token_reserved = token_reserved + $2
             WHERE id = $1
               AND status = 'active'
+              AND deleted_at IS NULL
               AND (expires_at IS NULL OR expires_at > now())
               AND token_used + token_reserved + $2 <= token_limit
             RETURNING token_reserved

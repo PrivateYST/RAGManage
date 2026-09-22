@@ -21,8 +21,7 @@ export function useEndpointForm(
   watch(
     () => [props.open, props.endpoint] as const,
     () => {
-      if (!props.open)
-        return
+      if (!props.open) return
       error.value = ''
       form.name = props.endpoint?.name ?? ''
       form.provider = props.endpoint?.provider ?? 'open_webui'
@@ -38,7 +37,7 @@ export function useEndpointForm(
       ...new Set(
         form.modelsText
           .split(MODEL_SEPARATOR_PATTERN)
-          .map(item => item.trim())
+          .map((item) => item.trim())
           .filter(Boolean),
       ),
     ]

@@ -16,6 +16,7 @@ import icon_Box from '@iconify-icons/lucide/box'
 import icon_Braces from '@iconify-icons/lucide/braces'
 import icon_Building2 from '@iconify-icons/lucide/building-2'
 import icon_ChevronDown from '@iconify-icons/lucide/chevron-down'
+import icon_ChevronLeft from '@iconify-icons/lucide/chevron-left'
 import icon_ChevronRight from '@iconify-icons/lucide/chevron-right'
 import icon_CheckCircle2 from '@iconify-icons/lucide/circle-check'
 import icon_XCircle from '@iconify-icons/lucide/circle-x'
@@ -70,6 +71,7 @@ import icon_SlidersHorizontal from '@iconify-icons/lucide/sliders-horizontal'
 import icon_Square from '@iconify-icons/lucide/square'
 import icon_ThumbsDown from '@iconify-icons/lucide/thumbs-down'
 import icon_ThumbsUp from '@iconify-icons/lucide/thumbs-up'
+import icon_Trash2 from '@iconify-icons/lucide/trash-2'
 import icon_AlertTriangle from '@iconify-icons/lucide/triangle-alert'
 import icon_UserRound from '@iconify-icons/lucide/user-round'
 import icon_UserRoundCheck from '@iconify-icons/lucide/user-round-check'
@@ -116,6 +118,7 @@ export const Braces = createIcon(icon_Braces)
 export const Building2 = createIcon(icon_Building2)
 export const CheckCircle2 = createIcon(icon_CheckCircle2)
 export const ChevronDown = createIcon(icon_ChevronDown)
+export const ChevronLeft = createIcon(icon_ChevronLeft)
 export const ChevronRight = createIcon(icon_ChevronRight)
 export const Clock3 = createIcon(icon_Clock3)
 export const Copy = createIcon(icon_Copy)
@@ -167,6 +170,7 @@ export const SlidersHorizontal = createIcon(icon_SlidersHorizontal)
 export const Square = createIcon(icon_Square)
 export const ThumbsDown = createIcon(icon_ThumbsDown)
 export const ThumbsUp = createIcon(icon_ThumbsUp)
+export const Trash2 = createIcon(icon_Trash2)
 export const TriangleAlert = createIcon(icon_AlertTriangle)
 export const UploadCloud = createIcon(icon_UploadCloud)
 export const UserRound = createIcon(icon_UserRound)

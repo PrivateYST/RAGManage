@@ -4,11 +4,13 @@ import type { AuditFilterState, SelectedAuditLog } from './type'
 import type { AuditLogItem } from '@/api/audit'
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { fetchAuditLogs } from '@/api/audit'
+import { useAppToast } from '@/composables/useToast'
 import { useAuthStore } from '@/store/auth'
 
 export function useAuditLogs() {
   /** 页面数据只从服务端审计接口读取，空间上下文由全局认证 Store 提供。 */
   const auth = useAuthStore()
+  const toast = useAppToast()
   const items = ref<AuditLogItem[]>([])
   const filters = reactive<AuditFilterState>({
     scope: auth.activeSpaceId ? 'space' : 'platform',
@@ -18,7 +20,6 @@ export function useAuditLogs() {
   })
   const loading = shallowRef(false)
   const loadingMore = shallowRef(false)
-  const error = shallowRef('')
   const nextCursor = shallowRef<string | null>(null)
   const selected = shallowRef<SelectedAuditLog>(null)
   const isPlatformAdmin = computed(() => auth.user?.platform_role === 'platform_admin')
@@ -26,16 +27,13 @@ export function useAuditLogs() {
 
   /** 按当前范围加载首屏或下一页；首屏查询会替换旧结果并重置游标。 */
   async function load(reset = true): Promise<void> {
-    if (!canLoadSpace.value)
-      return
+    if (!canLoadSpace.value) return
     if (reset) {
       loading.value = true
       nextCursor.value = null
-    }
-    else {
+    } else {
       loadingMore.value = true
     }
-    error.value = ''
     try {
       const page = await fetchAuditLogs({
         ...(filters.scope === 'space' ? { tenantId: auth.activeSpaceId } : {}),
@@ -47,13 +45,10 @@ export function useAuditLogs() {
       })
       items.value = reset ? page.items : [...items.value, ...page.items]
       nextCursor.value = page.next_cursor
-    }
-    catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '操作日志加载失败'
-      if (reset)
-        items.value = []
-    }
-    finally {
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '操作日志加载失败')
+      if (reset) items.value = []
+    } finally {
       loading.value = false
       loadingMore.value = false
     }
@@ -76,7 +71,6 @@ export function useAuditLogs() {
     filters,
     loading,
     loadingMore,
-    error,
     nextCursor,
     selected,
     isPlatformAdmin,

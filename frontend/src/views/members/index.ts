@@ -20,16 +20,20 @@ import {
   updateKnowledgeBaseMember,
   updateSpaceMember,
 } from '@/api/members'
+import { useAppToast } from '@/composables/useToast'
 import { useAuthStore } from '@/store/auth'
+
+type PendingStatusAction =
+  | { kind: 'space'; member: SpaceMember; busyId: string }
+  | { kind: 'knowledge'; member: KnowledgeBaseMember; busyId: string }
 
 export function useMembersPage() {
   const auth = useAuthStore()
+  const toast = useAppToast()
   const view = shallowRef<MemberView>('space')
   const loading = shallowRef(false)
   const grantLoading = shallowRef(false)
   const busyId = shallowRef('')
-  const error = shallowRef('')
-  const success = shallowRef('')
   const addDialogOpen = shallowRef(false)
   const spaceMembers = ref<SpaceMember[]>([])
   const knowledgeBases = ref<KnowledgeBaseRow[]>([])
@@ -37,25 +41,20 @@ export function useMembersPage() {
   const candidates = ref<KnowledgeBaseMemberCandidate[]>([])
   const auditItems = ref<MembershipAuditItem[]>([])
   const selectedKnowledgeBaseId = shallowRef('')
+  const pendingStatus = shallowRef<PendingStatusAction | null>(null)
 
   const canManageSpace = computed(() => auth.activeSpace?.role === 'space_admin')
   const activeMembers = computed(() =>
-    spaceMembers.value.filter(item => item.status === 'active'),
+    spaceMembers.value.filter((item) => item.status === 'active'),
   )
   const stats = computed(() => ({
     active: activeMembers.value.length,
-    admins: activeMembers.value.filter(item => item.role_code === 'space_admin').length,
-    customers: activeMembers.value.filter(item => item.role_code === 'customer_reader').length,
+    admins: activeMembers.value.filter((item) => item.role_code === 'space_admin').length,
+    customers: activeMembers.value.filter((item) => item.role_code === 'customer_reader').length,
     grants: activeMembers.value.reduce((total, item) => total + item.knowledge_base_count, 0),
   }))
 
-  function clearNotice(): void {
-    error.value = ''
-    success.value = ''
-  }
-
   async function loadPage(): Promise<void> {
-    clearNotice()
     loading.value = true
     knowledgeBaseMembers.value = []
     candidates.value = []
@@ -78,20 +77,17 @@ export function useMembersPage() {
         canManageSpace.value ? fetchMembershipAudit(spaceId) : null,
       ]
       const [knowledgeBaseResult, memberResult, auditResult] = await Promise.all(
-        requests.map(item => item ?? Promise.resolve({ items: [] })),
+        requests.map((item) => item ?? Promise.resolve({ items: [] })),
       )
       knowledgeBases.value = knowledgeBaseResult.items as KnowledgeBaseRow[]
       spaceMembers.value = memberResult.items as SpaceMember[]
       auditItems.value = auditResult.items as MembershipAuditItem[]
-      if (!knowledgeBases.value.some(item => item.id === selectedKnowledgeBaseId.value))
+      if (!knowledgeBases.value.some((item) => item.id === selectedKnowledgeBaseId.value))
         selectedKnowledgeBaseId.value = knowledgeBases.value[0]?.id ?? ''
-      if (!canManageSpace.value)
-        view.value = 'knowledge'
-    }
-    catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '成员信息加载失败'
-    }
-    finally {
+      if (!canManageSpace.value) view.value = 'knowledge'
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '成员信息加载失败')
+    } finally {
       loading.value = false
     }
   }
@@ -99,8 +95,7 @@ export function useMembersPage() {
   async function loadKnowledgeBaseAccess(): Promise<void> {
     knowledgeBaseMembers.value = []
     candidates.value = []
-    if (!selectedKnowledgeBaseId.value)
-      return
+    if (!selectedKnowledgeBaseId.value) return
     grantLoading.value = true
     try {
       const [membersResult, candidatesResult] = await Promise.all([
@@ -109,33 +104,27 @@ export function useMembersPage() {
       ])
       knowledgeBaseMembers.value = membersResult.items
       candidates.value = candidatesResult.items
-    }
-    catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '知识库授权加载失败'
-    }
-    finally {
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '知识库授权加载失败')
+    } finally {
       grantLoading.value = false
     }
   }
 
   async function refreshAudit(): Promise<void> {
-    if (!auth.activeSpaceId || !canManageSpace.value)
-      return
+    if (!auth.activeSpaceId || !canManageSpace.value) return
     auditItems.value = (await fetchMembershipAudit(auth.activeSpaceId)).items
   }
 
   async function submitSpaceMember(input: AddSpaceMemberInput): Promise<boolean> {
-    if (!auth.activeSpaceId)
-      return false
-    clearNotice()
+    if (!auth.activeSpaceId) return false
     try {
       await addSpaceMember(auth.activeSpaceId, { login: input.login, role_code: input.roleCode })
-      success.value = '成员已加入当前空间'
+      toast.success('成员已加入当前空间')
       await Promise.all([loadSpaceMembers(), refreshAudit()])
       return true
-    }
-    catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '添加成员失败'
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '添加成员失败')
       return false
     }
   }
@@ -146,68 +135,110 @@ export function useMembersPage() {
   }
 
   async function changeSpaceRole(member: SpaceMember, roleCode: SpaceRoleCode): Promise<void> {
-    if (!auth.activeSpaceId || member.role_code === roleCode)
-      return
-    clearNotice()
+    if (!auth.activeSpaceId || member.role_code === roleCode) return
     busyId.value = `space-${member.id}`
     try {
       await updateSpaceMember(auth.activeSpaceId, member.id, { role_code: roleCode })
-      success.value = '空间角色已更新'
+      toast.success('空间角色已更新')
       await Promise.all([loadSpaceMembers(), refreshAudit()])
-    }
-    catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '空间角色更新失败'
-    }
-    finally {
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '空间角色更新失败')
+    } finally {
       busyId.value = ''
     }
   }
 
+  /** 停用空间成员会立即撤销其访问权，先打开确认框；恢复成员可以直接执行。 */
   async function toggleSpaceStatus(member: SpaceMember): Promise<void> {
-    if (!auth.activeSpaceId)
+    if (member.status === 'active') {
+      pendingStatus.value = { kind: 'space', member, busyId: `space-${member.id}` }
       return
-    clearNotice()
+    }
+    await updateSpaceStatus(member)
+  }
+
+  /** 执行空间成员状态变更，并同步刷新成员和审计列表。 */
+  async function updateSpaceStatus(member: SpaceMember): Promise<boolean> {
+    if (!auth.activeSpaceId) return false
     busyId.value = `space-${member.id}`
     try {
       const status = member.status === 'active' ? 'disabled' : 'active'
       await updateSpaceMember(auth.activeSpaceId, member.id, { status })
-      success.value = status === 'active' ? '成员已恢复' : '成员已停用'
+      toast.success(status === 'active' ? '成员已恢复' : '成员已停用')
       await Promise.all([loadSpaceMembers(), refreshAudit()])
-    }
-    catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '成员状态更新失败'
-    }
-    finally {
+      return true
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '成员状态更新失败')
+      return false
+    } finally {
       busyId.value = ''
     }
   }
 
-  async function submitKnowledgeBaseGrant(input: AddKnowledgeBaseGrantInput): Promise<void> {
-    if (!selectedKnowledgeBaseId.value)
+  /** 知识库授权状态变更同样先经过确认，避免误撤销访问权限。 */
+  async function toggleKnowledgeBaseStatus(member: KnowledgeBaseMember): Promise<void> {
+    if (member.status === 'active') {
+      pendingStatus.value = { kind: 'knowledge', member, busyId: `grant-${member.id}` }
       return
-    clearNotice()
+    }
+    await updateKnowledgeBaseStatus(member)
+  }
+
+  /** 执行知识库授权状态变更，并刷新授权、审计和成员统计。 */
+  async function updateKnowledgeBaseStatus(member: KnowledgeBaseMember): Promise<boolean> {
+    if (!selectedKnowledgeBaseId.value) return false
+    busyId.value = `grant-${member.id}`
+    try {
+      const status = member.status === 'active' ? 'disabled' : 'active'
+      await updateKnowledgeBaseMember(selectedKnowledgeBaseId.value, member.id, { status })
+      toast.success(status === 'active' ? '知识库授权已恢复' : '知识库授权已撤销')
+      await Promise.all([loadKnowledgeBaseAccess(), refreshAudit(), loadSpaceMembers()])
+      return true
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '知识库授权状态更新失败')
+      return false
+    } finally {
+      busyId.value = ''
+    }
+  }
+
+  /** 关闭成员状态确认框，不修改服务端状态。 */
+  function cancelPendingStatus(): void {
+    if (!busyId.value) pendingStatus.value = null
+  }
+
+  /** 确认当前成员停用/授权撤销操作。 */
+  async function confirmPendingStatus(): Promise<void> {
+    const pending = pendingStatus.value
+    if (!pending) return
+    const updated =
+      pending.kind === 'space'
+        ? await updateSpaceStatus(pending.member)
+        : await updateKnowledgeBaseStatus(pending.member)
+    if (updated) pendingStatus.value = null
+  }
+
+  async function submitKnowledgeBaseGrant(input: AddKnowledgeBaseGrantInput): Promise<void> {
+    if (!selectedKnowledgeBaseId.value) return
     busyId.value = `grant-${input.userId}`
     try {
-      const candidate = candidates.value.find(item => item.id === input.userId)
+      const candidate = candidates.value.find((item) => item.id === input.userId)
       if (candidate?.grant_status) {
         await updateKnowledgeBaseMember(selectedKnowledgeBaseId.value, input.userId, {
           role_code: input.roleCode,
           status: 'active',
         })
-      }
-      else {
+      } else {
         await addKnowledgeBaseMember(selectedKnowledgeBaseId.value, {
           user_id: Number(input.userId),
           role_code: input.roleCode,
         })
       }
-      success.value = candidate?.grant_status ? '知识库授权已恢复' : '知识库授权已添加'
+      toast.success(candidate?.grant_status ? '知识库授权已恢复' : '知识库授权已添加')
       await Promise.all([loadKnowledgeBaseAccess(), refreshAudit(), loadSpaceMembers()])
-    }
-    catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '知识库授权失败'
-    }
-    finally {
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '知识库授权失败')
+    } finally {
       busyId.value = ''
     }
   }
@@ -216,40 +247,17 @@ export function useMembersPage() {
     member: KnowledgeBaseMember,
     roleCode: KnowledgeBaseRoleCode,
   ): Promise<void> {
-    if (!selectedKnowledgeBaseId.value || member.role_code === roleCode)
-      return
-    clearNotice()
+    if (!selectedKnowledgeBaseId.value || member.role_code === roleCode) return
     busyId.value = `grant-${member.id}`
     try {
       await updateKnowledgeBaseMember(selectedKnowledgeBaseId.value, member.id, {
         role_code: roleCode,
       })
-      success.value = '知识库角色已更新'
+      toast.success('知识库角色已更新')
       await Promise.all([loadKnowledgeBaseAccess(), refreshAudit()])
-    }
-    catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '知识库角色更新失败'
-    }
-    finally {
-      busyId.value = ''
-    }
-  }
-
-  async function toggleKnowledgeBaseStatus(member: KnowledgeBaseMember): Promise<void> {
-    if (!selectedKnowledgeBaseId.value)
-      return
-    clearNotice()
-    busyId.value = `grant-${member.id}`
-    try {
-      const status = member.status === 'active' ? 'disabled' : 'active'
-      await updateKnowledgeBaseMember(selectedKnowledgeBaseId.value, member.id, { status })
-      success.value = status === 'active' ? '知识库授权已恢复' : '知识库授权已撤销'
-      await Promise.all([loadKnowledgeBaseAccess(), refreshAudit(), loadSpaceMembers()])
-    }
-    catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '知识库授权状态更新失败'
-    }
-    finally {
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '知识库角色更新失败')
+    } finally {
       busyId.value = ''
     }
   }
@@ -263,8 +271,6 @@ export function useMembersPage() {
     loading,
     grantLoading,
     busyId,
-    error,
-    success,
     addDialogOpen,
     spaceMembers,
     knowledgeBases,
@@ -272,6 +278,7 @@ export function useMembersPage() {
     candidates,
     auditItems,
     selectedKnowledgeBaseId,
+    pendingStatus,
     canManageSpace,
     stats,
     loadPage,
@@ -281,5 +288,7 @@ export function useMembersPage() {
     submitKnowledgeBaseGrant,
     changeKnowledgeBaseRole,
     toggleKnowledgeBaseStatus,
+    cancelPendingStatus,
+    confirmPendingStatus,
   }
 }

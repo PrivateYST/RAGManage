@@ -12,6 +12,7 @@ const companyKey: CompanyApiKey = {
   tenant_id: '3',
   tenant_name: '客户 A',
   name: '生产 Key',
+  provider: 'open_webui',
   key_prefix: 'rmk_masked',
   token_limit: 1000,
   token_used: 34,
@@ -39,7 +40,7 @@ describe('api key table', () => {
     expect(cells[6]?.find('.api-key-action-list').exists()).toBe(true)
     expect(cells[1]?.classes()).not.toContain('api-key-prefix-content')
     expect(cells[6]?.classes()).not.toContain('api-key-action-list')
-    expect(cells.map(cell => cell.attributes('data-label'))).toEqual([
+    expect(cells.map((cell) => cell.attributes('data-label'))).toEqual([
       '客户 / 名称',
       'API Key',
       '状态',

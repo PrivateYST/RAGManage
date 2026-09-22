@@ -7,13 +7,13 @@
 .search-field { display: grid; gap: 7px; color: #52525b; font-size: 11px; font-weight: 600; }
 .search-field > span { display: flex; align-items: center; gap: 6px; }
 .search-field select, .search-field textarea, .search-query-options select { width: 100%; border: 1px solid var(--border); border-radius: 6px; outline: none; color: #27272a; background: #fff; font: inherit; }
-.search-field select { height: 36px; padding: 0 10px; }
+.search-field select { height: var(--control-height); padding: 0 10px; }
 .search-field textarea { min-height: 82px; padding: 10px 11px; font-size: 12px; line-height: 1.65; resize: vertical; }
 .search-field select:focus, .search-field textarea:focus, .search-query-options select:focus { border-color: #9b82dc; box-shadow: 0 0 0 2px rgb(118 86 200 / 12%); }
 .search-query-options { display: flex; flex-direction: column; gap: 11px; padding-left: 18px; border-left: 1px solid var(--border); }
 .search-option-heading { display: flex; align-items: center; gap: 6px; color: #3f3f46; font-size: 11px; font-weight: 700; }
 .search-query-options label { display: grid; gap: 5px; color: #71717a; font-size: 10px; }
-.search-query-options select { height: 33px; padding: 0 8px; font-size: 11px; }
+.search-query-options select { height: var(--control-height-sm); padding: 0 8px; font-size: 11px; }
 .search-run-button { width: 100%; margin-top: auto; }
 .search-run-button .loading-spinner { width: 13px; height: 13px; border-width: 2px; border-color: rgb(255 255 255 / 35%); border-top-color: #fff; }
 .search-run-hint { min-height: 30px; margin: -3px 1px 0; color: #a16207; font-size: 10px; line-height: 1.5; }

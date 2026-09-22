@@ -7,8 +7,8 @@ export function useReleaseRollbackDialog(
 ) {
   const canConfirm = computed(
     () =>
-      Boolean(props.targetRelease?.rollback_available && props.currentRelease)
-      && !props.rollingBack,
+      Boolean(props.targetRelease?.rollback_available && props.currentRelease) &&
+      !props.rollingBack,
   )
 
   function providerLabel(value: string): string {
@@ -16,13 +16,11 @@ export function useReleaseRollbackDialog(
   }
 
   function handleClose(): void {
-    if (!props.rollingBack)
-      actions.close()
+    if (!props.rollingBack) actions.close()
   }
 
   function handleConfirm(): void {
-    if (canConfirm.value)
-      actions.confirm()
+    if (canConfirm.value) actions.confirm()
   }
 
   return { canConfirm, providerLabel, handleClose, handleConfirm }

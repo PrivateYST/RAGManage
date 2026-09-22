@@ -103,8 +103,11 @@ describe('audit page', () => {
 
     await wrapper.get('.table-action').trigger('click')
 
-    expect(wrapper.get('[role="dialog"]').text()).toContain('审计事件 #18')
-    expect(wrapper.get('[role="dialog"]').text()).toContain('5e5f0e91-14e5-4d2b-a527-90769a2a73c9')
-    expect(wrapper.get('.audit-json-block').text()).toContain('"release_id": 5')
+    const dialog = document.body.querySelector('[role="dialog"]')
+    expect(dialog?.textContent).toContain('审计事件 #18')
+    expect(dialog?.textContent).toContain('5e5f0e91-14e5-4d2b-a527-90769a2a73c9')
+    expect(document.body.querySelector('.audit-json-block')?.textContent).toContain(
+      '"release_id": 5',
+    )
   })
 })

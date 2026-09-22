@@ -1,7 +1,7 @@
 import { apiRequest } from './client'
 
-export type ParseStatus
-  = 'queued' | 'processing' | 'complete' | 'partial' | 'unsupported' | 'failed'
+export type ParseStatus =
+  'queued' | 'processing' | 'complete' | 'partial' | 'unsupported' | 'failed'
 
 export interface DocumentRow {
   id: string
@@ -55,9 +55,9 @@ export interface TaskRow {
 }
 
 export interface UploadResult {
-  document: { id: string, title: string }
-  version: { id: string, version_no: number, parse_status: ParseStatus, created_at: string }
-  task: { id: string, state: TaskRow['state'], task_type: string, created_at: string }
+  document: { id: string; title: string }
+  version: { id: string; version_no: number; parse_status: ParseStatus; created_at: string }
+  task: { id: string; state: TaskRow['state']; task_type: string; created_at: string }
 }
 
 export interface ChunkRow {
@@ -72,7 +72,7 @@ export interface ChunkRow {
 
 export function fetchDocuments(
   knowledgeBaseId: string,
-): Promise<{ items: DocumentRow[], knowledge_base: { id: string, name: string } }> {
+): Promise<{ items: DocumentRow[]; knowledge_base: { id: string; name: string } }> {
   return apiRequest(`/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/documents`)
 }
 
@@ -90,7 +90,7 @@ export function fetchDocument(documentId: string): Promise<DocumentDetail> {
 }
 
 export function fetchVersionPreview(versionId: string): Promise<{
-  document: { id: string, title: string }
+  document: { id: string; title: string }
   version: Pick<DocumentVersion, 'id' | 'version_no' | 'parse_status' | 'warnings'>
   chunks: ChunkRow[]
 }> {
@@ -108,13 +108,11 @@ export function deleteDocument(documentId: string): Promise<void> {
 }
 
 export function fetchTasks(
-  filters: { tenantId?: string, knowledgeBaseId?: string } = {},
+  filters: { tenantId?: string; knowledgeBaseId?: string } = {},
 ): Promise<{ items: TaskRow[] }> {
   const query = new URLSearchParams()
-  if (filters.tenantId)
-    query.set('tenant_id', filters.tenantId)
-  if (filters.knowledgeBaseId)
-    query.set('knowledge_base_id', filters.knowledgeBaseId)
+  if (filters.tenantId) query.set('tenant_id', filters.tenantId)
+  if (filters.knowledgeBaseId) query.set('knowledge_base_id', filters.knowledgeBaseId)
   const suffix = query.size ? `?${query.toString()}` : ''
   return apiRequest(`/api/v1/tasks${suffix}`)
 }

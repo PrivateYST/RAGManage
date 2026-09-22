@@ -3,6 +3,7 @@ import type { ApiKeyStatus } from '@/api/apiKeys'
 
 export const apiKeyStatusLabel: Record<ApiKeyStatus, string> = {
   active: '启用',
+  disabled: '停用',
   expired: '已过期',
   revoked: '已撤销',
 }

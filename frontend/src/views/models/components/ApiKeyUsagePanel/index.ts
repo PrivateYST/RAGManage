@@ -5,10 +5,8 @@ import type { ApiKeyUsageRow } from '@/api/apiKeys'
 export function useApiKeyUsagePanel() {
   /** 区分网关真实值、回退估算和不可用状态。 */
   function sourceLabel(source: ApiKeyUsageRow['usage_source']): string {
-    if (source === 'gateway')
-      return '模型网关'
-    if (source === 'estimate')
-      return '回退估算'
+    if (source === 'gateway') return '模型网关'
+    if (source === 'estimate') return '回退估算'
     return '未返回'
   }
 

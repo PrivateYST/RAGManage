@@ -1,14 +1,15 @@
-/** 公司 API Key 管理接口：仅超级管理员可调用，明文只在创建响应中出现一次。 */
+/** 公司 API Key 管理接口：仅超级管理员可调用，明文只在显式创建或复制接口中返回。 */
 import { apiRequest } from './client'
 
-export type ApiKeyStatus = 'active' | 'revoked' | 'expired'
+export type ApiKeyStatus = 'active' | 'disabled' | 'revoked' | 'expired'
 
-/** 管理列表中的公司 API Key，不包含不可再次读取的明文凭据。 */
+/** 管理列表中的公司 API Key，不包含明文凭据。 */
 export interface CompanyApiKey {
   id: string
   tenant_id: string
   tenant_name?: string
   name: string
+  provider: 'open_webui' | 'local'
   key_prefix: string
   token_limit: number
   token_used: number
@@ -84,9 +85,27 @@ export function createApiKey(payload: {
   return apiRequest('/api/v1/api-keys', { method: 'POST', body: JSON.stringify(payload) })
 }
 
-/** 立即撤销指定 API Key，撤销后不能恢复调用。 */
-export function revokeApiKey(id: string): Promise<Pick<CompanyApiKey, 'id' | 'name' | 'status'>> {
-  return apiRequest(`/api/v1/api-keys/${encodeURIComponent(id)}/revoke`, { method: 'POST' })
+/** 通过受保护接口读取指定 Key 的完整明文，供管理员复制到剪贴板。 */
+export function fetchApiKeyPlaintext(
+  id: string,
+): Promise<{ id: string; name: string; raw_key: string }> {
+  return apiRequest(`/api/v1/api-keys/${encodeURIComponent(id)}/key`)
+}
+
+/** 通过管理员接口立即启用或停用指定 API Key。 */
+export function updateApiKeyStatus(
+  id: string,
+  status: 'active' | 'disabled',
+): Promise<Pick<CompanyApiKey, 'id' | 'name' | 'status'>> {
+  return apiRequest(`/api/v1/api-keys/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
+}
+
+/** 通过软删除立即失效指定 API Key，同时保留历史用量与审计记录。 */
+export function deleteApiKey(id: string): Promise<Pick<CompanyApiKey, 'id' | 'name' | 'status'>> {
+  return apiRequest(`/api/v1/api-keys/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 /** 获取指定 Key 的全量汇总及最近用量流水。 */

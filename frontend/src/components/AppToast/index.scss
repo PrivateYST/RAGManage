@@ -1,0 +1,187 @@
+/*
+ * Toast 的局部视觉层：使用项目语义变量，避免把通知组件与业务页面颜色耦合。
+ * viewport 明确清除原生 ol 编号，这是 Reka UI 默认列表语义在无 reset 场景下的兼容处理。
+ */
+.app-toast-viewport {
+  position: fixed;
+  z-index: 100;
+  top: 0;
+  right: 0;
+  display: flex;
+  width: min(380px, calc(100vw - 32px));
+  max-height: 100vh;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 20px 16px;
+  outline: none;
+  list-style: none;
+  pointer-events: none;
+}
+
+.app-toast {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+  width: 100%;
+  min-height: 64px;
+  padding: 14px 14px 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 12px 32px rgb(40 36 58 / 12%);
+  pointer-events: auto;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.app-toast--success {
+  border-left-color: var(--status-up);
+}
+.app-toast--error {
+  border-left-color: var(--destructive);
+}
+.app-toast--info {
+  border-left-color: var(--primary);
+}
+
+.app-toast:hover {
+  border-color: color-mix(in srgb, var(--foreground) 22%, var(--border));
+  box-shadow: 0 16px 36px rgb(40 36 58 / 16%);
+}
+
+.app-toast:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.app-toast__content {
+  min-width: 0;
+}
+
+.app-toast__title {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.app-toast__description {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.app-toast__close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  margin: -2px -4px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  place-items: center;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.app-toast__close:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.app-toast__close:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.app-toast[data-state='open'] {
+  animation: app-toast-in 180ms ease-out;
+}
+.app-toast[data-state='closed'] {
+  animation: app-toast-out 150ms ease-in forwards;
+}
+.app-toast[data-swipe='move'] {
+  transform: translate3d(var(--reka-toast-swipe-move-x), var(--reka-toast-swipe-move-y), 0);
+  transition: none;
+}
+.app-toast[data-swipe='cancel'] {
+  transform: translate3d(0, 0, 0);
+  transition: transform 180ms ease-out;
+}
+.app-toast[data-swipe='end'] {
+  animation: app-toast-swipe-out 100ms ease-out forwards;
+}
+
+@keyframes app-toast-in {
+  from {
+    opacity: 0;
+    transform: translate3d(18px, 0, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes app-toast-out {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(18px, 0, 0) scale(0.98);
+  }
+}
+
+@keyframes app-toast-swipe-out {
+  from {
+    opacity: 1;
+    transform: translate3d(var(--reka-toast-swipe-end-x), var(--reka-toast-swipe-end-y), 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(var(--reka-toast-swipe-end-x), var(--reka-toast-swipe-end-y), 0);
+  }
+}
+
+@media (max-width: 640px) {
+  .app-toast-viewport {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    padding: 12px;
+  }
+
+  .app-toast {
+    min-height: 60px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-toast,
+  .app-toast__close {
+    transition: none;
+  }
+
+  .app-toast[data-state='open'],
+  .app-toast[data-state='closed'],
+  .app-toast[data-swipe='end'] {
+    animation: none;
+  }
+}

@@ -80,7 +80,7 @@ export function fetchTenants(): Promise<{ items: TenantRow[] }> {
   return apiRequest('/api/v1/admin/tenants')
 }
 
-export function createTenant(payload: { code: string, name: string }): Promise<TenantRow> {
+export function createTenant(payload: { code: string; name: string }): Promise<TenantRow> {
   return apiRequest('/api/v1/admin/tenants', { method: 'POST', body: JSON.stringify(payload) })
 }
 
@@ -99,7 +99,7 @@ export function createUser(payload: UserCreatePayload): Promise<UserRow> {
 
 export function updateUser(
   id: string,
-  payload: { status?: 'active' | 'disabled', password?: string, display_name?: string },
+  payload: { status?: 'active' | 'disabled'; password?: string; display_name?: string },
 ): Promise<UserRow> {
   return apiRequest(`/api/v1/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
 }

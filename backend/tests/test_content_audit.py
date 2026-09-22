@@ -185,3 +185,30 @@ def test_delete_document_requires_admin_and_records_soft_delete(monkeypatch: Any
     summary = json.loads(audit[6])
     assert summary["before"] == {"status": "active"}
     assert summary["after"] == {"status": "deleted"}
+
+
+def test_delete_conversation_records_owner_scoped_soft_delete(monkeypatch: Any) -> None:
+    """会话删除应复用所有者授权，并在同一事务记录知识库范围审计。"""
+    connection = ContentAuditConnection()
+    conversation = {
+        "id": 13,
+        "tenant_id": 1,
+        "knowledge_base_id": 2,
+        "title": "待删除会话",
+        "status": "active",
+    }
+    monkeypatch.setattr("app.main._authenticated_user", AsyncMock(return_value=_context()))
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+    monkeypatch.setattr("app.main._conversation_id_from_public", AsyncMock(return_value=13))
+    monkeypatch.setattr("app.main._conversation_access", AsyncMock(return_value=conversation))
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.delete("/api/v1/conversations/11111111-1111-4111-8111-111111111111")
+
+    assert response.status_code == 204
+    assert any("UPDATE conversations" in call[0] for call in connection.execute_calls)
+    audit = _audit_call(connection, "conversation.delete")
+    summary = json.loads(audit[6])
+    assert summary["knowledge_base_id"] == "2"
+    assert summary["before"] == {"status": "active"}
+    assert summary["after"] == {"status": "deleted"}

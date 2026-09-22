@@ -137,6 +137,26 @@ def test_non_platform_user_cannot_manage_model_endpoints(monkeypatch: Any) -> No
     assert response.status_code == 403
 
 
+def test_platform_admin_can_replace_model_gateway_key_without_echoing_secret(
+    monkeypatch: Any,
+) -> None:
+    """平台管理员替换网关 Key 后只获得脱敏尾缀，后续状态接口反映系统内来源。"""
+    monkeypatch.setattr("app.main._authenticated_user", AsyncMock(return_value=_admin_context()))
+
+    with TestClient(create_app(Settings(model_gateway_api_key="old-key"))) as client:
+        response = client.put("/api/v1/model-gateway-key", json={"api_key": "new-secret-key"})
+        status = client.get("/api/v1/model-gateway-key")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "configured": True,
+        "source": "system",
+        "masked": "••••••••-key",
+    }
+    assert status.json()["source"] == "system"
+    assert "new-secret-key" not in response.text
+
+
 def test_ingestion_profile_is_immutable_and_reports_reparse_scope(monkeypatch: Any) -> None:
     connection = FakeModelConnection(
         fetchrows=[

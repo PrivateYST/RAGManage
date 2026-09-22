@@ -11,14 +11,12 @@ export function useAddMemberDialog(emit: AddMemberDialogEmits) {
   const submitting = shallowRef(false)
 
   function close(): void {
-    if (!submitting.value)
-      emit('close')
+    if (!submitting.value) emit('close')
   }
 
   function submit(): void {
     const normalizedLogin = login.value.trim()
-    if (!normalizedLogin || submitting.value)
-      return
+    if (!normalizedLogin || submitting.value) return
     submitting.value = true
     emit('submit', { login: normalizedLogin, roleCode: roleCode.value }, (success) => {
       submitting.value = false

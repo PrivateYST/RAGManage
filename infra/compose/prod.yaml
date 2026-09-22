@@ -37,6 +37,7 @@ services:
       MODEL_GATEWAY_BASE_URL: ${MODEL_GATEWAY_BASE_URL:-http://172.2.2.230:8080}
       # An empty key keeps the platform bootable; model operations still fail closed in ModelGatewayClient.
       MODEL_GATEWAY_API_KEY: ${MODEL_GATEWAY_API_KEY:-}
+      API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:-}
       MODEL_GATEWAY_ALLOWED_MODELS: ${MODEL_GATEWAY_ALLOWED_MODELS:-qwen3-embedding:0.6b,qwen3.8:27b}
       GENERATION_MODEL: ${GENERATION_MODEL:?Set GENERATION_MODEL}
       GENERATION_MAX_TOKENS: ${GENERATION_MAX_TOKENS:-1024}

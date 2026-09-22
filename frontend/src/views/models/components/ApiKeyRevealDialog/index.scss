@@ -1,6 +1,4 @@
 /* 明文 Key 弹窗强调一次性操作，但不使用高饱和装饰。 */
-.api-key-reveal-backdrop { position: fixed; z-index: 51; display: grid; background: rgb(24 20 32 / 52%); inset: 0; place-items: center; }
 .api-key-reveal-card { width: min(560px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); box-shadow: 0 18px 48px rgb(40 36 58 / 18%); }
 .api-key-reveal-card header, .api-key-reveal-heading, .api-key-reveal-card footer { display: flex; align-items: center; }.api-key-reveal-card header { justify-content: space-between; }.api-key-reveal-heading { gap: 9px; }.api-key-reveal-card h2 { margin: 1px 0 0; font-size: 18px; }.api-key-reveal-card > p { color: var(--muted); font-size: 12px; line-height: 1.6; }
 .api-key-raw-value { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); }.api-key-raw-value code { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 12px; }.api-key-reveal-card footer { justify-content: flex-end; margin-top: 16px; }
-.api-key-reveal-card > .api-key-copy-error { margin: 8px 0 0; color: var(--destructive); }

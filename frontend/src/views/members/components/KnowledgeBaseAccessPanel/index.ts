@@ -16,15 +16,14 @@ export function useKnowledgeBaseAccessPanel(
   const roleCode = shallowRef<KnowledgeBaseRoleCode>('reader')
   const candidates = toRef(props, 'candidates')
   const availableCandidates = computed(() =>
-    candidates.value.filter(item => item.grant_status !== 'active'),
+    candidates.value.filter((item) => item.grant_status !== 'active'),
   )
   const selectedCandidate = computed<KnowledgeBaseMemberCandidate | null>(
-    () => candidates.value.find(item => item.id === candidateId.value) ?? null,
+    () => candidates.value.find((item) => item.id === candidateId.value) ?? null,
   )
 
   function submitGrant(): void {
-    if (!candidateId.value)
-      return
+    if (!candidateId.value) return
     emit('addGrant', { userId: candidateId.value, roleCode: roleCode.value })
     candidateId.value = ''
     roleCode.value = 'reader'

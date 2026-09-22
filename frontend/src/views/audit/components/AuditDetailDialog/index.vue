@@ -1,7 +1,7 @@
 <!-- 审计详情弹窗：只读展示事件元数据和完整变更摘要。 -->
 <script setup lang="ts">
 import type { AuditDetailDialogProps } from './type'
-import { Braces, X } from '@/components'
+import { AppDialog, Braces, X } from '@/components'
 import { auditActionLabel, auditSummaryJson, auditTargetLabel, formatAuditTime } from './index'
 import './index.scss'
 
@@ -12,18 +12,16 @@ defineEmits<{ close: [] }>()
 </script>
 
 <template>
-  <div class="dialog-backdrop audit-detail-backdrop" @click.self="$emit('close')">
-    <section
-      class="dialog-card audit-detail-dialog"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="audit-detail-title"
-    >
+  <AppDialog
+    open
+    title="审计事件详情"
+    content-class="w-[min(680px,calc(100vw-2rem))]"
+    @close="$emit('close')"
+  >
+    <section class="dialog-card audit-detail-dialog">
       <header class="dialog-heading">
         <div>
-          <p class="eyebrow">
-            审计事件 #{{ item.id }}
-          </p>
+          <p class="eyebrow">审计事件 #{{ item.id }}</p>
           <h2 id="audit-detail-title">
             {{ auditActionLabel(item.action) }}
           </h2>
@@ -76,5 +74,5 @@ defineEmits<{ close: [] }>()
         <pre>{{ auditSummaryJson(item) }}</pre>
       </div>
     </section>
-  </div>
+  </AppDialog>
 </template>

@@ -1,4 +1,7 @@
+# 工作区与依赖安装脚本白名单，确保本地和 CI 使用一致的安装行为。
 packages:
   - frontend
 allowBuilds:
   '@parcel/watcher': true
+  # Reka UI 的间接依赖需要根据已安装的 Vue 版本生成适配入口。
+  vue-demi: true

@@ -14,22 +14,20 @@ export const useAuthStore = defineStore('auth', () => {
   const user = computed(() => context.value?.user ?? null)
   const spaces = computed(() => context.value?.spaces ?? [])
   const activeSpace = computed(
-    () => spaces.value.find(space => space.id === activeSpaceId.value) ?? null,
+    () => spaces.value.find((space) => space.id === activeSpaceId.value) ?? null,
   )
   const menus = computed(() => context.value?.menus ?? [])
 
   function reconcileActiveSpace(): void {
     const available = spaces.value
-    if (!available.some(space => space.id === activeSpaceId.value))
+    if (!available.some((space) => space.id === activeSpaceId.value))
       activeSpaceId.value = available[0]?.id ?? ''
-    if (activeSpaceId.value)
-      localStorage.setItem('ragmanage_active_space_id', activeSpaceId.value)
+    if (activeSpaceId.value) localStorage.setItem('ragmanage_active_space_id', activeSpaceId.value)
     else localStorage.removeItem('ragmanage_active_space_id')
   }
 
   function setActiveSpace(spaceId: string): void {
-    if (!spaces.value.some(space => space.id === spaceId))
-      return
+    if (!spaces.value.some((space) => space.id === spaceId)) return
     activeSpaceId.value = spaceId
     localStorage.setItem('ragmanage_active_space_id', spaceId)
   }
@@ -40,16 +38,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function initialize(): Promise<void> {
-    if (initialized.value)
-      return
+    if (initialized.value) return
     loading.value = true
     try {
       await refreshContext()
-    }
-    catch {
+    } catch {
       context.value = null
-    }
-    finally {
+    } finally {
       initialized.value = true
       loading.value = false
     }
@@ -63,12 +58,10 @@ export const useAuthStore = defineStore('auth', () => {
       reconcileActiveSpace()
       initialized.value = true
       return true
-    }
-    catch (cause) {
+    } catch (cause) {
       error.value = cause instanceof Error ? cause.message : '登录失败，请稍后重试'
       return false
-    }
-    finally {
+    } finally {
       loading.value = false
     }
   }

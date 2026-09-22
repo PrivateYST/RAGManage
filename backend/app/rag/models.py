@@ -11,6 +11,7 @@ from typing import Any, TypedDict
 import httpx
 
 from app.core.config import Settings
+from app.core.runtime_settings import load_persisted_model_gateway_key
 
 
 class ChatStreamEvent(TypedDict):
@@ -54,6 +55,10 @@ class ModelGatewayClient:
             raise ValueError("MODEL_GATEWAY_API_KEY_NOT_CONFIGURED")
         return {"Authorization": f"Bearer {api_key}"}
 
+    async def _ensure_gateway_key(self) -> None:
+        """在实际请求前加载平台管理员最近替换的全局 Key，兼容 Worker 独立进程。"""
+        await load_persisted_model_gateway_key(self.settings)
+
     def _client(self, timeout: float) -> httpx.AsyncClient:
         return httpx.AsyncClient(
             timeout=timeout,
@@ -63,6 +68,7 @@ class ModelGatewayClient:
 
     async def probe_generation(self, base_url: str, model_name: str) -> dict[str, Any]:
         """执行一次最小非流式生成，确认网关鉴权、白名单和模型均可用。"""
+        await self._ensure_gateway_key()
         started = time.perf_counter()
         async with self._client(timeout=60) as client:
             response = await client.post(
@@ -87,6 +93,7 @@ class ModelGatewayClient:
 
     async def probe_embedding(self, base_url: str, model_name: str) -> dict[str, Any]:
         """执行一次单文本嵌入并返回实测维度，不依赖预设维度。"""
+        await self._ensure_gateway_key()
         started = time.perf_counter()
         async with self._client(timeout=60) as client:
             response = await client.post(
@@ -113,6 +120,7 @@ class ModelGatewayClient:
 
     async def embed_with_usage(self, texts: list[str]) -> EmbeddingResult:
         """返回嵌入向量和输入 Token；网关缺失 usage 时显式标记估算值。"""
+        await self._ensure_gateway_key()
         if not texts or any(not text.strip() for text in texts):
             raise ValueError("EMPTY_EMBEDDING_INPUT")
         if self.settings.embedding_model not in self.settings.allowed_model_names:
@@ -158,6 +166,7 @@ class ModelGatewayClient:
         base_url: str | None = None,
     ) -> str:
         """返回 Ollama 模型内容摘要，确保构建快照能识别模型实际变化。"""
+        await self._ensure_gateway_key()
         expected_name = model_name or self.settings.embedding_model
         async with self._client(timeout=15) as client:
             response = await client.get(
@@ -194,6 +203,7 @@ class ModelGatewayClient:
         max_tokens: int | None = None,
     ) -> AsyncIterator[ChatStreamEvent]:
         """流式返回文本和最终 usage；配额调用可显式设置可预扣的输出上限。"""
+        await self._ensure_gateway_key()
         if not messages or any(not item.get("content", "").strip() for item in messages):
             raise ValueError("EMPTY_CHAT_MESSAGES")
         if self.settings.generation_model not in self.settings.allowed_model_names:

@@ -4,6 +4,7 @@
 import type { CreatedApiKey } from '@/api/apiKeys'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { toastKey } from '@/composables/useToast'
 import ApiKeyRevealDialog from './index.vue'
 
 const apiKey: CreatedApiKey = {
@@ -11,6 +12,7 @@ const apiKey: CreatedApiKey = {
   tenant_id: '3',
   tenant_name: '客户 A',
   name: '生产 Key',
+  provider: 'open_webui',
   key_prefix: 'rmk_masked',
   raw_key: 'rmk_once_only_secret',
   token_limit: 1000,
@@ -28,6 +30,7 @@ const apiKey: CreatedApiKey = {
 
 describe('api key reveal dialog', () => {
   const writeText = vi.fn()
+  const toastError = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -39,26 +42,60 @@ describe('api key reveal dialog', () => {
 
   it('copies the one-time plaintext and reports success to the manager', async () => {
     writeText.mockResolvedValue(undefined)
-    const wrapper = mount(ApiKeyRevealDialog, { props: { apiKey } })
+    const wrapper = mount(ApiKeyRevealDialog, {
+      props: { apiKey },
+      global: {
+        provide: {
+          [toastKey as symbol]: {
+            error: toastError,
+            success: vi.fn(),
+            info: vi.fn(),
+            show: vi.fn(),
+          },
+        },
+      },
+    })
+    await flushPromises()
 
-    await wrapper.find('.api-key-raw-value button').trigger('click')
+    const copyButton = document.body.querySelector<HTMLButtonElement>('.api-key-raw-value button')
+    expect(copyButton).not.toBeNull()
+    copyButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await flushPromises()
 
     expect(writeText).toHaveBeenCalledWith('rmk_once_only_secret')
     expect(wrapper.emitted('copied')).toHaveLength(1)
-    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(toastError).not.toHaveBeenCalled()
+    wrapper.unmount()
   })
 
   it('keeps the key visible and explains clipboard permission failures', async () => {
     writeText.mockRejectedValue(new Error('permission denied'))
-    const wrapper = mount(ApiKeyRevealDialog, { props: { apiKey } })
-
-    await wrapper.find('.api-key-raw-value button').trigger('click')
+    const wrapper = mount(ApiKeyRevealDialog, {
+      props: { apiKey },
+      global: {
+        provide: {
+          [toastKey as symbol]: {
+            error: toastError,
+            success: vi.fn(),
+            info: vi.fn(),
+            show: vi.fn(),
+          },
+        },
+      },
+    })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('复制失败，请手动选择并复制 API Key。')
-    expect(wrapper.text()).toContain('rmk_once_only_secret')
+    const copyButton = document.body.querySelector<HTMLButtonElement>('.api-key-raw-value button')
+    expect(copyButton).not.toBeNull()
+    copyButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flushPromises()
+
+    expect(toastError).toHaveBeenCalledWith('复制失败', '请手动选择并复制 API Key。')
+    expect(document.body.textContent).toContain('rmk_once_only_secret')
     expect(wrapper.emitted('copied')).toBeUndefined()
-    expect(wrapper.find('.api-key-raw-value button').attributes('disabled')).toBeUndefined()
+    expect(document.body.querySelector('.api-key-raw-value button')?.hasAttribute('disabled')).toBe(
+      false,
+    )
+    wrapper.unmount()
   })
 })

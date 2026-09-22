@@ -13,8 +13,7 @@ export function useApiKeyCreateDialog(
   watch(
     () => props.open,
     (open) => {
-      if (!open)
-        return
+      if (!open) return
       form.tenantId = props.tenants[0]?.id ?? ''
       form.name = ''
       form.tokenLimit = '100000'
@@ -35,9 +34,7 @@ export function useApiKeyCreateDialog(
       tenant_id: Number(form.tenantId),
       name: form.name.trim(),
       token_limit: tokenLimit,
-      expires_at: form.expiresAt
-        ? new Date(`${form.expiresAt}T23:59:59`).toISOString()
-        : null,
+      expires_at: form.expiresAt ? new Date(`${form.expiresAt}T23:59:59`).toISOString() : null,
     })
   }
 

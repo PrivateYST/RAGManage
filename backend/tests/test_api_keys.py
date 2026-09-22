@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from app.core.api_keys import (
     ApiKeyQuotaExceededError,
     authenticate_api_key,
+    decrypt_api_key,
+    encrypt_api_key,
     generate_api_key,
     hash_api_key,
     recover_stale_api_key_reservations,
@@ -176,6 +178,84 @@ class FakeUsageConnection:
         self.closed = True
 
 
+class FakeRevealConnection:
+    """模拟管理员查询加密密文并记录复制审计。"""
+
+    def __init__(self, encrypted_key: str | None) -> None:
+        self.encrypted_key = encrypted_key
+        self.closed = False
+        self.execute_calls: list[tuple[Any, ...]] = []
+
+    def transaction(self) -> FakeTransaction:
+        return FakeTransaction()
+
+    async def fetchrow(self, query: str, *args: object) -> dict[str, object] | None:
+        assert args == (9,)
+        if self.encrypted_key is None:
+            return None
+        return {"id": "9", "tenant_id": 3, "name": "生产 Key", "encrypted_key": self.encrypted_key}
+
+    async def execute(self, query: str, *args: object) -> None:
+        self.execute_calls.append((query, *args))
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class FakeLifecycleConnection:
+    """模拟 API Key 状态切换和软删除接口，并保留审计写入记录。"""
+
+    def __init__(
+        self,
+        *,
+        status: str = "disabled",
+        provider: str = "local",
+        provider_user_email: str | None = None,
+        provider_user_password: str | None = None,
+    ) -> None:
+        """配置状态更新接口的返回状态。"""
+        self.status = status
+        self.provider = provider
+        self.provider_user_email = provider_user_email
+        self.provider_user_password = provider_user_password
+        self.execute_calls: list[tuple[Any, ...]] = []
+        self.closed = False
+
+    def transaction(self) -> FakeTransaction:
+        """返回管理接口使用的异步事务上下文。"""
+        return FakeTransaction()
+
+    async def fetchrow(self, query: str, *args: object) -> dict[str, object]:
+        """按接口 SQL 返回状态变更或软删除后的 Key。"""
+        assert args == (9, "disabled") if "SET status" in query else args == (9,)
+        if "SET status" in query:
+            return {
+                "id": "9",
+                "tenant_id": "3",
+                "name": "生产 Key",
+                "status": self.status,
+                "revoked_at": None,
+            }
+        return {
+            "id": "9",
+            "tenant_id": "3",
+            "name": "生产 Key",
+            "status": "revoked",
+            "deleted_at": "2026-09-21T00:00:00Z",
+            "provider": self.provider,
+            "provider_user_email": self.provider_user_email,
+            "provider_user_password": self.provider_user_password,
+        }
+
+    async def execute(self, query: str, *args: object) -> None:
+        """记录 API Key 生命周期审计调用。"""
+        self.execute_calls.append((query, *args))
+
+    async def close(self) -> None:
+        """标记管理接口已释放数据库连接。"""
+        self.closed = True
+
+
 def test_generated_key_only_persists_hash_and_masked_prefix() -> None:
     """随机明文仅返回给创建者，哈希和脱敏前缀不能还原可调用凭据。"""
     raw_key, prefix, key_hash = generate_api_key()
@@ -185,6 +265,102 @@ def test_generated_key_only_persists_hash_and_masked_prefix() -> None:
     assert raw_key not in prefix
     assert key_hash == hash_api_key(raw_key)
     assert len(key_hash) == 64
+
+
+def test_api_key_encryption_round_trip_does_not_store_plaintext() -> None:
+    """复制密文可跨请求解密，但密文本身不能直接暴露可调用 Key。"""
+    raw_key = "rmk_test-secret"
+    ciphertext = encrypt_api_key(raw_key, "stable-test-secret")
+
+    assert raw_key not in ciphertext
+    assert decrypt_api_key(ciphertext, "stable-test-secret") == raw_key
+
+
+def test_platform_admin_can_reveal_encrypted_api_key(monkeypatch: Any) -> None:
+    """管理员复制接口返回完整 Key，并记录脱敏审计，不允许匿名调用。"""
+    raw_key = "rmk_copyable-secret"
+    connection = FakeRevealConnection(
+        encrypt_api_key(raw_key, Settings().api_key_encryption_secret_value)
+    )
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(return_value={"user": {"id": "7", "platform_role": "platform_admin"}}),
+    )
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.get("/api/v1/api-keys/9/key")
+
+    assert response.status_code == 200
+    assert response.json()["raw_key"] == raw_key
+    assert any("api_key.reveal" in str(call) for call in connection.execute_calls)
+    assert connection.closed
+
+
+def test_platform_admin_can_toggle_api_key_status_and_audit(monkeypatch: Any) -> None:
+    """状态切换只允许管理员执行，并记录新的启用状态而不暴露凭据。"""
+    connection = FakeLifecycleConnection()
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(return_value={"user": {"id": "7", "platform_role": "platform_admin"}}),
+    )
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.patch("/api/v1/api-keys/9/status", json={"status": "disabled"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "disabled"
+    assert any("api_key.status.update" in str(call) for call in connection.execute_calls)
+    assert connection.closed
+
+
+def test_platform_admin_soft_deletes_api_key_and_preserves_history(monkeypatch: Any) -> None:
+    """删除接口只隐藏并失效 Key，历史用量和外键记录仍可继续查询。"""
+    connection = FakeLifecycleConnection()
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(return_value={"user": {"id": "7", "platform_role": "platform_admin"}}),
+    )
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.delete("/api/v1/api-keys/9")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "revoked"
+    assert any("api_key.delete" in str(call) for call in connection.execute_calls)
+    assert connection.closed
+
+
+def test_open_webui_key_is_revoked_before_local_soft_delete(monkeypatch: Any) -> None:
+    """医院 Key 删除必须先撤销远端原生 Key，再完成本地生命周期变更。"""
+    settings = Settings()
+    connection = FakeLifecycleConnection(
+        provider="open_webui",
+        provider_user_email="ragmanage-tenant-3@service.ragmanage.local",
+        provider_user_password=encrypt_api_key(
+            "service-password",
+            settings.api_key_encryption_secret_value,
+        ),
+    )
+    revoke = AsyncMock()
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(return_value={"user": {"id": "7", "platform_role": "platform_admin"}}),
+    )
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+    monkeypatch.setattr("app.main.OpenWebUIAdminClient.revoke_service_key", revoke)
+
+    with TestClient(create_app(settings)) as client:
+        response = client.delete("/api/v1/api-keys/9")
+
+    assert response.status_code == 200
+    revoke.assert_awaited_once_with(
+        user_email="ragmanage-tenant-3@service.ragmanage.local",
+        user_password="service-password",
+    )
+    assert any("api_key.delete" in str(call) for call in connection.execute_calls)
 
 
 def test_authentication_rejects_missing_revoked_or_exhausted_key() -> None:

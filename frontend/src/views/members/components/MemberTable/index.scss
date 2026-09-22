@@ -6,7 +6,7 @@
 .member-identity > div { min-width: 0; }
 .member-identity strong { color: #27272a; font-size: 12px; }
 .member-identity small { display: block; margin-top: 2px; color: #a1a1aa; font-size: 10px; }
-.member-role-select { width: 140px; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; outline: none; color: #3f3f46; background: #fff; font-size: 11px; }
+.member-role-select { width: 140px; height: var(--control-height-sm); padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; outline: none; color: #3f3f46; background: #fff; font-size: 11px; }
 .member-role-select:focus { border-color: #9b82dc; box-shadow: 0 0 0 2px rgb(118 86 200 / 12%); }
 .member-role-select:disabled { cursor: not-allowed; opacity: .55; }
 .member-grant-count { color: #3f3f46; font-size: 12px; }
