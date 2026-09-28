@@ -1,0 +1,91 @@
+/** 登录会话行仅在窄视口调整操作位置，其余视觉使用项目语义工具类。 */
+.session-list-items {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.session-list-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid var(--border);
+  padding: 14px 0;
+}
+.session-list-item-main {
+  min-width: 0;
+  flex: 1;
+}
+.session-list-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--foreground);
+  font-size: 12px;
+}
+.session-list-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  margin-top: 7px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.session-list-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.session-list-item-action {
+  display: inline-flex;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  padding: 0 9px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.session-list-item-action:hover {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+.session-list-item-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.session-list {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.session-state {
+  display: flex;
+  min-height: 120px;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 9px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.session-state strong {
+  color: var(--foreground);
+  font-size: 12px;
+}
+
+@media (max-width: 480px) {
+  .session-list-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .session-list-item-action {
+    align-self: flex-end;
+  }
+}

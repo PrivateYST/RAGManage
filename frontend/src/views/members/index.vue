@@ -21,6 +21,8 @@ const {
   auth,
   view,
   loading,
+  loadError,
+  grantError,
   grantLoading,
   busyId,
   addDialogOpen,
@@ -34,6 +36,7 @@ const {
   canManageSpace,
   stats,
   loadPage,
+  loadKnowledgeBaseAccess,
   submitSpaceMember,
   changeSpaceRole,
   toggleSpaceStatus,
@@ -165,6 +168,25 @@ const {
         <History :size="14" />授权历史
       </button>
     </nav>
+
+    <div
+      v-if="loadError"
+      class="content-card mb-[12px] flex items-center justify-between gap-[12px]"
+      role="alert"
+    >
+      <span class="text-xs text-destructive">{{ loadError }}</span>
+      <button class="secondary-button" type="button" @click="loadPage">重新加载成员数据</button>
+    </div>
+    <div
+      v-if="grantError && view === 'knowledge'"
+      class="content-card mb-[12px] flex items-center justify-between gap-[12px]"
+      role="alert"
+    >
+      <span class="text-xs text-destructive">{{ grantError }}</span>
+      <button class="secondary-button" type="button" @click="loadKnowledgeBaseAccess">
+        重新加载授权
+      </button>
+    </div>
 
     <section v-if="view === 'space' && canManageSpace" class="content-card overflow-hidden p-0">
       <header

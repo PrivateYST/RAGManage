@@ -2,20 +2,27 @@
 
 import hashlib
 import json
+import logging
 import secrets
 import time
+from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Annotated, Any, cast
 from urllib.parse import urlparse
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import asyncpg
 import httpx
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, SecretStr, field_validator
+from redis.asyncio import Redis
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.api_keys import decrypt_api_key, encrypt_api_key, generate_api_key
 from app.core.audit import write_audit_event
@@ -28,11 +35,25 @@ from app.core.auth import (
     revoke_token,
 )
 from app.core.config import Settings
-from app.core.health import check_dependencies
-from app.core.runtime_settings import load_persisted_model_gateway_key, persist_model_gateway_key
+from app.core.health import check_dependencies, collect_runtime_metrics
+from app.core.runtime_settings import (
+    load_persisted_model_gateway_key,
+    persist_model_gateway_key,
+)
+from app.core.security import (
+    ManagementRateLimitMiddleware,
+    RequestIDMiddleware,
+    SessionCsrfMiddleware,
+    StructuredRequestLoggingMiddleware,
+    finish_login_attempt,
+    login_client_ip,
+    reserve_login_attempt,
+    session_csrf_token,
+)
 from app.integrations.open_webui import OpenWebUIAdminClient, OpenWebUIProvisioningError
 from app.rag.chat import load_run_snapshot, stream_generation_run
 from app.rag.models import ModelGatewayClient
+from app.rag.parsing import validate_document_container
 from app.rag.profiles import embedding_profile_definition, gateway_settings, profile_hash
 from app.rag.releases import release_diff, release_manifest_hash, rollback_candidate_ids
 from app.rag.retrieval import RetrievalServiceError, execute_vector_search
@@ -43,9 +64,73 @@ ALLOWED_DOCUMENT_TYPES = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".pdf": "application/pdf",
 }
+# Markdown 在浏览器与常见 HTTP 客户端中可能以 text/plain 声明；其他类型使用规范 MIME。
+ALLOWED_DOCUMENT_MIME_TYPES = {
+    ".md": {"text/markdown", "text/plain"},
+    ".txt": {"text/plain"},
+    ".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    ".pdf": {"application/pdf"},
+}
 MAX_DOCUMENT_SIZE = 50 * 1024 * 1024
 # 管理页只加载最近流水，累计值始终由数据库对全部记录聚合。
 API_KEY_USAGE_RECENT_LIMIT = 200
+OPENAI_CHAT_REQUEST_MAX_BYTES = 1024 * 1024
+# OpenAI 兼容入口的单次输出硬上限，即使平台默认预算配置得更高也不扩大客户请求。
+OPENAI_CHAT_MAX_OUTPUT_TOKENS = 4096
+# 同一客户 Key 同时执行的兼容问答上限；数据库 advisory lock 保证跨 Worker 计数原子。
+OPENAI_CHAT_MAX_CONCURRENT_RUNS = 5
+# 会话管理仅列出最近活动中的会话，避免账号长时间使用后返回无界结果。
+SESSION_LIST_LIMIT = 100
+logger = logging.getLogger(__name__)
+
+
+def _standard_error_code(status_code: int) -> str:
+    """将 HTTP 状态映射为稳定错误码；业务 detail 仍保留在响应体中。"""
+    return {
+        400: "bad_request",
+        401: "unauthorized",
+        403: "forbidden",
+        404: "not_found",
+        409: "conflict",
+        413: "payload_too_large",
+        415: "unsupported_media_type",
+        422: "validation_error",
+        429: "rate_limited",
+        500: "internal_error",
+        503: "service_unavailable",
+    }.get(status_code, "http_error")
+
+
+def _version_diff(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> dict[str, Any]:
+    """按切片顺序生成稳定版本差异，只返回统计与短文本摘要。"""
+    before_text = [str(item.get("content", "")) for item in before]
+    after_text = [str(item.get("content", "")) for item in after]
+    matcher = SequenceMatcher(a=before_text, b=after_text, autojunk=False)
+    changes: list[dict[str, Any]] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        changes.append(
+            {
+                "kind": "added" if tag == "insert" else "removed" if tag == "delete" else "changed",
+                "before_ordinals": [int(item["ordinal"]) for item in before[i1:i2]],
+                "after_ordinals": [int(item["ordinal"]) for item in after[j1:j2]],
+                "before_preview": [text[:240] for text in before_text[i1:i2]],
+                "after_preview": [text[:240] for text in after_text[j1:j2]],
+            }
+        )
+    return {
+        "before_chunk_count": len(before),
+        "after_chunk_count": len(after),
+        "added_chunks": sum(
+            len(change["after_ordinals"]) for change in changes if change["kind"] == "added"
+        ),
+        "removed_chunks": sum(
+            len(change["before_ordinals"]) for change in changes if change["kind"] == "removed"
+        ),
+        "changed_chunks": sum(1 for change in changes if change["kind"] == "changed"),
+        "changes": changes,
+    }
 
 
 class TenantCreate(BaseModel):
@@ -64,9 +149,30 @@ class UserCreate(BaseModel):
 
 class MenuPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
+    parent_id: int | None = None
     sort_order: int | None = Field(default=None, ge=0, le=9999)
     visible: bool | None = None
     status: str | None = Field(default=None, pattern=r"^(active|disabled)$")
+
+
+class MenuCreate(BaseModel):
+    """菜单创建契约；路由和权限标识由平台管理员明确提供并持久化。"""
+
+    code: str = Field(min_length=2, max_length=80, pattern=r"^[a-z0-9][a-z0-9_-]+$")
+    name: str = Field(min_length=1, max_length=80)
+    kind: str = Field(pattern=r"^(directory|menu|button)$")
+    parent_id: int | None = None
+    route: str | None = Field(default=None, max_length=200)
+    icon: str | None = Field(default=None, max_length=80)
+    permission_code: str = Field(min_length=2, max_length=120)
+    sort_order: int = Field(default=0, ge=0, le=9999)
+    visible: bool = True
+
+
+class RoleMenuPatch(BaseModel):
+    """平台角色权限编辑请求；菜单 ID 必须去重且全部属于系统菜单。"""
+
+    menu_ids: list[int] = Field(default_factory=list, max_length=200)
 
 
 class UserPatch(BaseModel):
@@ -151,8 +257,138 @@ class RunCreate(BaseModel):
         return question
 
 
+class OpenAIChatMessage(BaseModel):
+    """客户单轮 RAG 请求中的消息；历史 assistant/tool 消息不属于当前契约。"""
+
+    role: str = Field(min_length=1, max_length=20)
+    content: str = Field(min_length=1, max_length=12000)
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("role")
+    @classmethod
+    def supported_role(cls, value: str) -> str:
+        """接纳常见 system/user 形状，但拒绝模型输出或工具调用历史。"""
+        role = value.strip().lower()
+        if role not in {"system", "user"}:
+            raise ValueError("兼容入口当前仅支持 system 和 user，且必须是单轮问答")
+        return role
+
+    @field_validator("content")
+    @classmethod
+    def non_empty_content(cls, value: str) -> str:
+        """拒绝空消息，避免无意义调用消耗客户额度。"""
+        content = value.strip()
+        if not content:
+            raise ValueError("消息内容不能为空")
+        return content
+
+
+class OpenAIChatCompletionRequest(BaseModel):
+    """单轮 RAG 的 OpenAI 兼容请求；知识库 ID 是租户隔离所需的扩展字段。
+
+    ``temperature`` 仅接纳 SDK 默认字段以保持形状兼容，实际采样值固定来自 Runtime
+    Profile，不因客户请求改变已审批的知识库行为。
+    """
+
+    model: str = Field(min_length=1, max_length=160)
+    messages: list[OpenAIChatMessage] = Field(min_length=1, max_length=32)
+    stream: bool = False
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    max_tokens: int | None = Field(default=None, ge=1, le=OPENAI_CHAT_MAX_OUTPUT_TOKENS)
+    knowledge_base_id: int = Field(gt=0)
+    request_id: UUID | None = None
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("model")
+    @classmethod
+    def normalize_model(cls, value: str) -> str:
+        """去除模型名首尾空白，后续只允许服务端生成模型白名单。"""
+        model = value.strip()
+        if not model:
+            raise ValueError("模型名称不能为空")
+        return model
+
+
 class RunRetryRequest(BaseModel):
     request_id: UUID
+
+
+class OpenAIRequestBodyLimitMiddleware:
+    """在 OpenAI 请求进入 JSON 解析前限制正文大小，避免大请求占满 API 内存。"""
+
+    def __init__(self, app: ASGIApp, *, max_bytes: int) -> None:
+        """配置 ASGI 应用和兼容入口正文上限。"""
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """只为 OpenAI POST 预读不超过上限的正文，并将其完整重放给 FastAPI。"""
+        if (
+            scope["type"] != "http"
+            or scope.get("method") != "POST"
+            or scope.get("path") != "/v1/chat/completions"
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        content_length = headers.get(b"content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) > self.max_bytes:
+                    await self._send_too_large(send)
+                    return
+            except ValueError:
+                await self._send_too_large(send)
+                return
+
+        chunks: list[bytes] = []
+        total_size = 0
+        more_body = True
+        while more_body:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            chunk = message.get("body", b"")
+            total_size += len(chunk)
+            if total_size > self.max_bytes:
+                await self._send_too_large(send)
+                return
+            chunks.append(chunk)
+            more_body = bool(message.get("more_body", False))
+
+        body = b"".join(chunks)
+        replayed = False
+
+        async def replay_receive() -> Message:
+            """重放已校验正文一次，之后继续转交真实 disconnect 事件。"""
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay_receive, send)
+
+    async def _send_too_large(self, send: Send) -> None:
+        """返回稳定 OpenAI 错误结构；拒绝原因不依赖具体 HTTP 服务器。"""
+        body = json.dumps(
+            _openai_error_payload("request_too_large", "请求正文超过 1 MiB 限制"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/json; charset=utf-8"),
+                    (b"content-length", str(len(body)).encode("ascii")),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
 
 
 class FeedbackCreate(BaseModel):
@@ -243,7 +479,6 @@ class ApiKeyCreate(BaseModel):
     token_limit: int = Field(gt=0, le=10_000_000_000)
     expires_at: datetime | None = None
 
-
     @field_validator("name")
     @classmethod
     def normalize_name(cls, value: str) -> str:
@@ -331,6 +566,8 @@ async def _authenticated_user(settings: Settings, request: Request) -> dict[str,
 def _api_key_route_allowed(request: Request) -> bool:
     """限制公司 API Key 的接口面，防止它继承后台管理和配置能力。"""
     path = request.url.path
+    if path == "/v1/chat/completions":
+        return request.method == "POST"
     if path == "/api/v1/knowledge-bases":
         return request.method == "GET"
     if path == "/api/v1/conversations":
@@ -524,9 +761,17 @@ async def _knowledge_base_access(
         row = await connection.fetchrow(
             """
             SELECT kb.id, kb.tenant_id, kb.name, kb.status, kb.active_release_id,
+                   kb.active_runtime_id, rp.definition AS runtime_definition,
+                   generation_endpoint.allowed_models AS generation_allowed_models,
+                   generation_endpoint.status AS generation_endpoint_status,
                    'customer_reader' AS tenant_role, NULL::text AS knowledge_base_role
             FROM knowledge_bases kb
             JOIN tenants t ON t.id = kb.tenant_id AND t.status = 'active'
+            LEFT JOIN runtime_profiles rp ON rp.id = kb.active_runtime_id
+              AND rp.tenant_id = kb.tenant_id AND rp.knowledge_base_id = kb.id
+            LEFT JOIN model_endpoints generation_endpoint
+              ON generation_endpoint.id =
+                 (rp.definition->'generation'->>'endpoint_id')::bigint
             WHERE kb.id = $1 AND kb.tenant_id = $2 AND kb.status <> 'disabled'
               AND kb.active_release_id IS NOT NULL
             """,
@@ -660,6 +905,388 @@ def _public_run_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _openai_error_payload(code: str, message: str) -> dict[str, Any]:
+    """构造 OpenAI 客户端可直接消费的错误包，不暴露内部 SQL 或上游正文。"""
+    normalized_code = code.lower()
+    if normalized_code == "invalid_api_key":
+        error_type = "authentication_error"
+    elif normalized_code == "api_key_scope_forbidden":
+        error_type = "permission_error"
+    elif normalized_code == "knowledge_base_not_found":
+        error_type = "not_found_error"
+    elif normalized_code in {"duplicate_request", "request_cancelled"}:
+        error_type = "conflict_error"
+    elif normalized_code in {"rate_limit_exceeded", "token_quota_exceeded"}:
+        error_type = "rate_limit_error"
+    elif normalized_code in {
+        "request_too_large",
+        "invalid_request",
+        "max_tokens_exceeds_server_limit",
+    }:
+        error_type = "invalid_request_error"
+    elif normalized_code in {"service_unavailable", "generation_failed", "generation_incomplete"}:
+        error_type = "server_error"
+    else:
+        error_type = "invalid_request_error"
+    if normalized_code == "generation_failed":
+        message = "问答生成失败，可以重试。"
+    return {"error": {"message": message, "type": error_type, "code": code}}
+
+
+def _openai_question(messages: list[OpenAIChatMessage]) -> str:
+    """提取唯一用户问题；服务端忽略客户端 system 规则以保持引用校验边界。"""
+    user_messages = [message.content for message in messages if message.role == "user"]
+    if len(user_messages) != 1:
+        raise HTTPException(status_code=400, detail="兼容入口每次请求必须包含一个 user 消息")
+    return user_messages[0]
+
+
+async def _prepare_openai_run(
+    connection: asyncpg.Connection,
+    *,
+    context: dict[str, Any],
+    knowledge_base_id: int,
+    model: str,
+    question: str,
+    request_id: UUID,
+    max_tokens: int,
+    default_model: str,
+    default_allowed_models: frozenset[str],
+) -> tuple[int, dict[str, Any]]:
+    """在单个事务中创建兼容问答运行并冻结授权快照。
+
+    参数包含已认证身份、知识库、白名单模型、唯一问题、幂等 UUID 与输出预算；
+    返回数据库运行 ID 和公开运行快照。重复请求参数冲突或 Key 并发超限时抛出
+    ``HTTPException``，且事务会回滚，不创建会话或消息。
+    """
+    api_key_id = context.get("api_key_id")
+    api_key_tenant_id = context.get("api_key_tenant_id")
+    if api_key_id is None or api_key_tenant_id is None:
+        raise HTTPException(status_code=403, detail="只有客户 API Key 可以调用模型网关")
+    request_fingerprint = hashlib.sha256(
+        json.dumps(
+            {
+                "knowledge_base_id": knowledge_base_id,
+                "model": model,
+                "question": question,
+                "max_tokens": max_tokens,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+    async with connection.transaction():
+        # 与原生运行创建共用 Key 锁，幂等查询与兼容运行创建保持原子边界。
+        await connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            f"openai-concurrency:{api_key_id}",
+        )
+        existing = await connection.fetchrow(
+            """
+            SELECT run.id::text, run.public_id::text AS public_id,
+                   run.tenant_id::text, run.knowledge_base_id::text,
+                   run.conversation_id::text, run.user_message_id::text,
+                   run.assistant_message_id::text, user_message.content AS question,
+                   run.request_fingerprint,
+                   run.release_id::text, run.api_key_id::text, run.request_id::text,
+                   run.state, run.outcome, run.cancel_requested,
+                   run.error, run.created_at, run.updated_at
+            FROM generation_runs run
+            JOIN messages user_message ON user_message.id = run.user_message_id
+              AND user_message.tenant_id = run.tenant_id
+            WHERE run.api_key_id = $1 AND run.request_id = $2
+            """,
+            int(api_key_id),
+            request_id,
+        )
+        if existing is not None:
+            if (
+                int(existing["knowledge_base_id"]) != knowledge_base_id
+                or str(existing["question"]) != question
+                or existing["request_fingerprint"] != request_fingerprint
+            ):
+                raise HTTPException(status_code=409, detail="request_id 已用于不同请求参数")
+            return int(existing["id"]), dict(existing)
+
+        access = await _knowledge_base_access(connection, context, knowledge_base_id)
+        if int(access["tenant_id"]) != int(api_key_tenant_id):
+            # 与知识库查询中的空间条件重复约束，避免后续查询修改扩大 Key 的授权范围。
+            raise HTTPException(status_code=404, detail="知识库不存在")
+
+        runtime_definition = _json_value(access.get("runtime_definition"), {})
+        generation_definition = runtime_definition.get("generation", {})
+        resolved_model = str(generation_definition.get("model") or default_model)
+        if model != resolved_model:
+            raise HTTPException(
+                status_code=400,
+                detail="请求模型不在所选知识库的 Runtime Profile 白名单中",
+            )
+        if access.get("active_runtime_id") is None and model not in default_allowed_models:
+            raise HTTPException(status_code=400, detail="请求模型不在服务端生成模型白名单中")
+        if access.get("active_runtime_id") is not None:
+            allowed_models = _json_value(access.get("generation_allowed_models"), [])
+            if isinstance(allowed_models, str):
+                try:
+                    allowed_models = json.loads(allowed_models)
+                except json.JSONDecodeError:
+                    allowed_models = []
+            if (
+                access.get("generation_endpoint_status") != "active"
+                or not isinstance(allowed_models, list)
+                or resolved_model not in allowed_models
+            ):
+                raise HTTPException(status_code=503, detail="知识库生成模型端点不可用")
+
+        conversation = await connection.fetchrow(
+            """
+            INSERT INTO conversations(tenant_id, knowledge_base_id, owner_user_id, title)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, tenant_id, knowledge_base_id, title, status
+            """,
+            int(access["tenant_id"]),
+            knowledge_base_id,
+            int(context["user"]["id"]),
+            question[:60],
+        )
+        if conversation is None:
+            raise HTTPException(status_code=500, detail="会话创建失败")
+        # conversations 不存 Profile 快照；运行消息必须冻结本次授权查询读取的知识库版本。
+        conversation_snapshot = {
+            **dict(conversation),
+            "active_release_id": access["active_release_id"],
+            "active_runtime_id": access.get("active_runtime_id"),
+        }
+        run = await _create_generation_run(
+            connection,
+            conversation=conversation_snapshot,
+            user_id=int(context["user"]["id"]),
+            request_id=request_id,
+            question=question,
+            api_key_id=str(api_key_id),
+            request_fingerprint=request_fingerprint,
+        )
+    return int(run["id"]), _public_run_payload(run)
+
+
+def _parse_internal_sse(raw_event: str) -> tuple[str, dict[str, Any]]:
+    """解析现有 RAG SSE 事件，兼容事件数据跨网络分片后的完整单事件文本。"""
+    event_name = "message"
+    data_lines: list[str] = []
+    for line in raw_event.splitlines():
+        if line.startswith("event:"):
+            event_name = line[6:].strip()
+        elif line.startswith("data:"):
+            data_lines.append(line[5:].strip())
+    if not data_lines:
+        return event_name, {}
+    payload = json.loads("\n".join(data_lines))
+    return event_name, payload if isinstance(payload, dict) else {}
+
+
+def _openai_usage(run: Mapping[str, Any] | None) -> dict[str, Any]:
+    """把内部回答 usage 转成 OpenAI 字段，并保留来源扩展供结算审计使用。"""
+    usage = run.get("usage") if run is not None else None
+    if not isinstance(usage, Mapping):
+        usage = {}
+    return {
+        "prompt_tokens": max(0, int(usage.get("prompt_tokens", 0))),
+        "completion_tokens": max(0, int(usage.get("completion_tokens", 0))),
+        "total_tokens": max(0, int(usage.get("total_tokens", 0))),
+        "usage_source": str(usage.get("usage_source", "unavailable")),
+    }
+
+
+def _openai_run_error(run: Mapping[str, Any]) -> dict[str, Any] | None:
+    """把失败或取消的持久化终态转成稳定错误，不把它们伪装成成功回答。"""
+    state = str(run.get("state", ""))
+    if state == "completed":
+        return None
+    if state == "cancelled":
+        return _openai_error_payload("request_cancelled", "问答运行已取消。")
+
+    stored_error = run.get("error")
+    stored_code = stored_error.get("code") if isinstance(stored_error, Mapping) else None
+    if stored_code == "TOKEN_QUOTA_EXCEEDED":
+        return _openai_error_payload(
+            "TOKEN_QUOTA_EXCEEDED", "API Key Token 额度不足，请联系公司管理员。"
+        )
+    return _openai_error_payload("generation_failed", "问答生成失败，可以重试。")
+
+
+def _openai_chunk(
+    *,
+    completion_id: str,
+    model: str,
+    created: int,
+    delta: dict[str, Any] | None = None,
+    finish_reason: str | None = None,
+    usage: dict[str, Any] | None = None,
+) -> str:
+    """输出一个 OpenAI Chat Completions SSE data 帧。"""
+    payload: dict[str, Any] = {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "delta": delta or {},
+                "finish_reason": finish_reason,
+            }
+        ],
+    }
+    if usage is not None:
+        payload["choices"] = []
+        payload["usage"] = usage
+    return f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+
+
+async def _stream_openai_completion(
+    source: AsyncIterator[str],
+    *,
+    completion_id: str,
+    model: str,
+    created: int,
+) -> AsyncIterator[str]:
+    """把可信的内部运行 SSE 转成 OpenAI 帧，并总以 ``[DONE]`` 结束。
+
+    参数 ``source`` 必须是服务端 RAG 事件流；成功终态输出答案、finish reason 和 usage，
+    失败终态输出脱敏错误帧。响应头发出后的异常只能映射为流内错误，不能更改 HTTP 状态。
+    """
+    emitted_text = False
+    final_run: Mapping[str, Any] | None = None
+    emitted_error = False
+    yield _openai_chunk(
+        completion_id=completion_id,
+        model=model,
+        created=created,
+        delta={"role": "assistant"},
+    )
+    try:
+        async for raw_event in source:
+            event_name, payload = _parse_internal_sse(raw_event)
+            if event_name == "token":
+                text = payload.get("text")
+                if isinstance(text, str) and text:
+                    emitted_text = True
+                    yield _openai_chunk(
+                        completion_id=completion_id,
+                        model=model,
+                        created=created,
+                        delta={"content": text},
+                    )
+            elif event_name == "done":
+                run = payload.get("run")
+                if isinstance(run, Mapping):
+                    final_run = run
+                    run_error = _openai_run_error(run)
+                    if run_error is not None:
+                        emitted_error = True
+                        yield f"data: {json.dumps(run_error, ensure_ascii=False)}\n\n"
+                        continue
+                    answer = run.get("answer")
+                    if not emitted_text and isinstance(answer, str) and answer:
+                        emitted_text = True
+                        yield _openai_chunk(
+                            completion_id=completion_id,
+                            model=model,
+                            created=created,
+                            delta={"content": answer},
+                        )
+                    yield _openai_chunk(
+                        completion_id=completion_id,
+                        model=model,
+                        created=created,
+                        finish_reason="stop",
+                    )
+                    yield _openai_chunk(
+                        completion_id=completion_id,
+                        model=model,
+                        created=created,
+                        usage=_openai_usage(run),
+                    )
+            elif event_name == "error":
+                emitted_error = True
+                code = str(payload.get("code", "generation_failed"))
+                message = str(payload.get("message", "问答生成失败"))
+                error_payload = json.dumps(_openai_error_payload(code, message), ensure_ascii=False)
+                yield f"data: {error_payload}\n\n"
+        if final_run is None and not emitted_error:
+            error_payload = json.dumps(
+                _openai_error_payload("generation_incomplete", "问答未返回终态"),
+                ensure_ascii=False,
+            )
+            yield f"data: {error_payload}\n\n"
+    except Exception:
+        # HTTP 头已经发送后只能使用协议内错误帧，不能再修改响应状态码。
+        if not emitted_error:
+            error_payload = json.dumps(
+                _openai_error_payload("generation_failed", "问答生成失败，可以重试。"),
+                ensure_ascii=False,
+            )
+            yield f"data: {error_payload}\n\n"
+    yield "data: [DONE]\n\n"
+
+
+async def _collect_openai_completion(
+    source: AsyncIterator[str],
+    *,
+    completion_id: str,
+    model: str,
+    created: int,
+) -> dict[str, Any]:
+    """消费服务端 RAG 事件流并返回一个非流式 OpenAI completion 或错误包。
+
+    ``source`` 只接受内部 SSE；缺失终态、生成失败或取消不会被伪装成空成功响应，
+    上游异常正文不会透传给客户。
+    """
+    parts: list[str] = []
+    final_run: Mapping[str, Any] | None = None
+    error: dict[str, Any] | None = None
+    try:
+        async for raw_event in source:
+            event_name, payload = _parse_internal_sse(raw_event)
+            if event_name == "token" and isinstance(payload.get("text"), str):
+                parts.append(str(payload["text"]))
+            elif event_name == "done" and isinstance(payload.get("run"), Mapping):
+                final_run = payload["run"]
+            elif event_name == "error":
+                error = _openai_error_payload(
+                    str(payload.get("code", "generation_failed")),
+                    str(payload.get("message", "问答生成失败，可以重试。")),
+                )
+    except Exception:
+        # 内部事件只来自受信服务，但仍不能把解析或生成异常泄露为默认 500 响应。
+        return _openai_error_payload("generation_failed", "问答生成失败，可以重试。")
+    if error is not None:
+        return error
+    if final_run is None:
+        return _openai_error_payload("generation_incomplete", "问答未返回终态")
+    run_error = _openai_run_error(final_run)
+    if run_error is not None:
+        return run_error
+    content = final_run.get("answer")
+    if not isinstance(content, str):
+        content = "".join(parts)
+    return {
+        "id": completion_id,
+        "object": "chat.completion",
+        "created": created,
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": _openai_usage(final_run),
+    }
+
+
 async def _create_generation_run(
     connection: asyncpg.Connection,
     *,
@@ -669,10 +1296,20 @@ async def _create_generation_run(
     question: str,
     user_message_id: int | None = None,
     api_key_id: str | None = None,
+    request_fingerprint: str | None = None,
 ) -> dict[str, Any]:
-    """创建幂等问答运行，并把客户调用固定绑定到发起请求的 API Key。"""
+    """在调用方事务中创建幂等运行，并统一执行客户 Key 的并发门禁。
+
+    调用方必须已打开事务。重复 ``request_id`` 先返回同会话的既有运行；新客户 Key
+    运行按“每 Key 锁、每 request 锁”顺序串行化，再检查活跃数量，超限抛出
+    ``HTTPException(429)``。返回持久化运行，消息、发布版本和 Runtime ID 均绑定会话快照。
+    """
     if api_key_id is not None:
-        # 同一 Key/request_id 的并发创建在查询前串行化，避免两边都创建消息后才撞唯一索引。
+        # 原生与 OpenAI 路由遵守相同锁顺序，避免并行请求绕过 Key 限制或互相死锁。
+        await connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            f"openai-concurrency:{api_key_id}",
+        )
         await connection.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             f"api-key-run:{api_key_id}:{request_id}",
@@ -718,6 +1355,17 @@ async def _create_generation_run(
             raise HTTPException(status_code=409, detail="request_id 已由其他调用身份使用")
         return dict(existing)
 
+    if api_key_id is not None:
+        active_runs = await connection.fetchval(
+            """
+            SELECT count(*) FROM generation_runs
+            WHERE api_key_id = $1 AND state IN ('queued', 'running')
+            """,
+            int(api_key_id),
+        )
+        if int(active_runs or 0) >= OPENAI_CHAT_MAX_CONCURRENT_RUNS:
+            raise HTTPException(status_code=429, detail="当前 API Key 的并发问答数已达上限")
+
     if user_message_id is None:
         user_message_id = int(
             await connection.fetchval(
@@ -754,8 +1402,8 @@ async def _create_generation_run(
         """
         INSERT INTO generation_runs(
           tenant_id, knowledge_base_id, conversation_id, user_message_id,
-          assistant_message_id, release_id, request_id, api_key_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          assistant_message_id, release_id, request_id, api_key_id, request_fingerprint
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 RETURNING id::text, public_id::text AS public_id, tenant_id::text,
                   knowledge_base_id::text,
                   conversation_id::text, user_message_id::text, assistant_message_id::text,
@@ -771,6 +1419,7 @@ async def _create_generation_run(
         conversation["active_release_id"],
         request_id,
         int(api_key_id) if api_key_id is not None else None,
+        request_fingerprint,
     )
     if conversation["title"] == "新会话":
         await connection.execute(
@@ -824,11 +1473,25 @@ def _role_for_access(row: asyncpg.Record) -> str:
 
 
 def _safe_filename(filename: str | None) -> str:
+    """剥离路径信息并限制上传文件名长度，避免客户端路径进入业务标识。"""
     name = Path(filename or "未命名文档").name.strip()
     return name[:240] or "未命名文档"
 
 
+def _validate_upload_type(filename: str, content_type: str | None) -> str:
+    """要求文件扩展名与 multipart MIME 一致，并返回规范化扩展名。"""
+    suffix = Path(filename).suffix.lower()
+    if suffix not in ALLOWED_DOCUMENT_TYPES:
+        raise HTTPException(status_code=415, detail="仅支持 Markdown、TXT、DOCX 和电子 PDF")
+
+    declared_type = (content_type or "").split(";", maxsplit=1)[0].strip().lower()
+    if declared_type not in ALLOWED_DOCUMENT_MIME_TYPES[suffix]:
+        raise HTTPException(status_code=415, detail="文件扩展名与 MIME 类型不匹配")
+    return suffix
+
+
 async def _read_upload(upload: UploadFile, suffix: str) -> bytes:
+    """限量读取并验证文件内容特征；上传体超限时立即停止缓存后续字节。"""
     chunks: list[bytes] = []
     total = 0
     while True:
@@ -840,6 +1503,8 @@ async def _read_upload(upload: UploadFile, suffix: str) -> bytes:
             raise HTTPException(status_code=413, detail="文件不能超过 50 MB")
         chunks.append(chunk)
     raw = b"".join(chunks)
+    if not raw:
+        raise HTTPException(status_code=422, detail="不能上传空文件")
     if suffix in {".md", ".txt"}:
         try:
             text = raw.decode("utf-8-sig")
@@ -849,10 +1514,12 @@ async def _read_upload(upload: UploadFile, suffix: str) -> bytes:
             raise HTTPException(status_code=415, detail="文本文件包含不可读取的内容")
     elif suffix == ".pdf" and not raw.startswith(b"%PDF-"):
         raise HTTPException(status_code=415, detail="文件头不是有效的 PDF")
-    elif suffix == ".docx" and not raw.startswith(b"PK"):
-        raise HTTPException(status_code=415, detail="文件头不是有效的 DOCX")
-    if not raw:
-        raise HTTPException(status_code=422, detail="不能上传空文件")
+    elif suffix in {".docx", ".pdf"}:
+        try:
+            # 上传入口与 Worker 共用容器边界，避免文件落盘后才发现压缩炸弹。
+            validate_document_container(raw, suffix)
+        except ValueError as error:
+            raise HTTPException(status_code=415, detail="文件容器结构不安全或已损坏") from error
     return raw
 
 
@@ -1082,6 +1749,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     runtime_gateway_key_configured = False
 
     app = FastAPI(title="RAGManage", version="0.2.0")
+    app.add_middleware(
+        RequestIDMiddleware,
+    )
+    app.add_middleware(StructuredRequestLoggingMiddleware)
+    app.add_middleware(
+        OpenAIRequestBodyLimitMiddleware,
+        max_bytes=OPENAI_CHAT_REQUEST_MAX_BYTES,
+    )
+    app.add_middleware(
+        SessionCsrfMiddleware,
+        secret=config.csrf_secret_value,
+    )
+    app.add_middleware(
+        ManagementRateLimitMiddleware,
+        redis_url=config.redis_url,
+    )
+
+    @app.exception_handler(RequestValidationError)
+    async def openai_validation_errors(
+        request: Request,
+        error: RequestValidationError,
+    ) -> Response:
+        """只改写 OpenAI 入口的验证错误，避免影响管理 API 的既有响应契约。"""
+        if request.url.path == "/v1/chat/completions":
+            return JSONResponse(
+                status_code=422,
+                content=_openai_error_payload("invalid_request", "请求参数无效"),
+                headers={"X-Error-Code": "validation_error"},
+            )
+        response = await request_validation_exception_handler(request, error)
+        response.headers["X-Error-Code"] = "validation_error"
+        return response
+
+    @app.exception_handler(HTTPException)
+    async def standard_http_exception(request: Request, error: HTTPException) -> Response:
+        """统一 HTTP 业务异常的错误码响应头，同时保留原 detail 契约。"""
+        response = await http_exception_handler(request, error)
+        response.headers["X-Error-Code"] = _standard_error_code(error.status_code)
+        return response
 
     @app.get("/api/v1/health/live")
     async def live() -> dict[str, str]:
@@ -1096,9 +1802,222 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={"status": "ready" if healthy else "not_ready", "checks": checks},
         )
 
+    @app.get("/api/v1/health/metrics")
+    async def metrics(request: Request) -> dict[str, object]:
+        """仅向平台管理员返回聚合运行指标，不泄露租户正文或凭据。"""
+        context = await _authenticated_user(config, request)
+        _require_platform_admin(context)
+        return await collect_runtime_metrics(config)
+
+    @app.post("/v1/chat/completions")
+    async def openai_chat_completions(
+        payload: OpenAIChatCompletionRequest,
+        request: Request,
+    ) -> Response:
+        """提供客户 Key 专用的 OpenAI 兼容 RAG 问答入口和标准 SSE。"""
+        request_id_header = request.headers.get("x-request-id")
+        try:
+            context = await _authenticated_user(config, request)
+            if context.get("api_key_id") is None:
+                return JSONResponse(
+                    status_code=403,
+                    content=_openai_error_payload(
+                        "api_key_scope_forbidden",
+                        "只有客户 API Key 可以调用模型网关",
+                    ),
+                )
+            max_output_tokens = min(
+                OPENAI_CHAT_MAX_OUTPUT_TOKENS,
+                max(1, config.generation_max_tokens),
+            )
+            if payload.max_tokens is not None and payload.max_tokens > max_output_tokens:
+                return JSONResponse(
+                    status_code=400,
+                    content=_openai_error_payload(
+                        "max_tokens_exceeds_server_limit",
+                        "max_tokens 超过服务端单次生成上限",
+                    ),
+                )
+            if payload.request_id is not None and request_id_header:
+                try:
+                    header_request_id = UUID(request_id_header)
+                except ValueError as error:
+                    raise HTTPException(
+                        status_code=400, detail="X-Request-ID 必须是 UUID"
+                    ) from error
+                if payload.request_id != header_request_id:
+                    return JSONResponse(
+                        status_code=400,
+                        content=_openai_error_payload(
+                            "request_id_mismatch",
+                            "request_id 与 X-Request-ID 必须一致",
+                        ),
+                    )
+            if payload.request_id is not None:
+                request_id = payload.request_id
+            elif request_id_header:
+                try:
+                    request_id = UUID(request_id_header)
+                except ValueError as error:
+                    raise HTTPException(
+                        status_code=400, detail="X-Request-ID 必须是 UUID"
+                    ) from error
+            else:
+                request_id = uuid4()
+            question = _openai_question(payload.messages)
+            connection = await _database(config)
+            try:
+                effective_max_tokens = payload.max_tokens or max_output_tokens
+                run_id, run = await _prepare_openai_run(
+                    connection,
+                    context=context,
+                    knowledge_base_id=payload.knowledge_base_id,
+                    model=payload.model,
+                    question=question,
+                    request_id=request_id,
+                    max_tokens=effective_max_tokens,
+                    default_model=config.generation_model,
+                    default_allowed_models=config.allowed_model_names,
+                )
+            finally:
+                await connection.close()
+
+            public_run = _public_run_payload(run)
+            public_id = str(public_run.get("id") or uuid4())
+            completion_id = f"chatcmpl_{public_id}"
+            created = int(time.time())
+            source = stream_generation_run(
+                config,
+                run_id=run_id,
+                user_id=int(context["user"]["id"]),
+                api_key_id=str(context["api_key_id"]),
+                api_key_tenant_id=int(context["api_key_tenant_id"]),
+                max_tokens=effective_max_tokens,
+            )
+            headers = {"Cache-Control": "no-cache", "X-Request-ID": str(request_id)}
+            if payload.stream:
+                headers["X-Accel-Buffering"] = "no"
+                return StreamingResponse(
+                    _stream_openai_completion(
+                        source,
+                        completion_id=completion_id,
+                        model=payload.model,
+                        created=created,
+                    ),
+                    media_type="text/event-stream",
+                    headers=headers,
+                )
+            result = await _collect_openai_completion(
+                source,
+                completion_id=completion_id,
+                model=payload.model,
+                created=created,
+            )
+            status_code = 200
+            if "error" in result:
+                error_code = str(result["error"].get("code", "generation_failed"))
+                status_code = 429 if error_code == "TOKEN_QUOTA_EXCEEDED" else 502
+                if error_code == "request_cancelled":
+                    status_code = 409
+            return JSONResponse(status_code=status_code, content=result, headers=headers)
+        except HTTPException as error:
+            if error.status_code == 401:
+                code = "invalid_api_key"
+            elif error.status_code == 403:
+                code = "api_key_scope_forbidden"
+            elif error.status_code == 404:
+                code = "knowledge_base_not_found"
+            elif error.status_code == 409:
+                code = "duplicate_request"
+            elif error.status_code == 429:
+                code = "rate_limit_exceeded"
+            elif error.status_code == 503:
+                code = "service_unavailable"
+            else:
+                code = "invalid_request"
+            return JSONResponse(
+                status_code=error.status_code,
+                content=_openai_error_payload(code, str(error.detail)),
+            )
+        except asyncpg.PostgresError as error:
+            logger.exception("OpenAI 兼容入口数据库操作失败", exc_info=error)
+            return JSONResponse(
+                status_code=503,
+                content=_openai_error_payload(
+                    "service_unavailable", "问答服务暂不可用，请稍后重试。"
+                ),
+            )
+        except Exception as error:
+            logger.exception("OpenAI 兼容入口发生未预期异常", exc_info=error)
+            return JSONResponse(
+                status_code=502,
+                content=_openai_error_payload("generation_failed", "问答生成失败，可以重试。"),
+            )
+
     @app.post("/api/v1/auth/login")
-    async def login(payload: dict[str, str], response: Response) -> dict[str, Any]:
-        context = await authenticate(config, payload.get("login", ""), payload.get("password", ""))
+    async def login(
+        payload: dict[str, str], request: Request, response: Response
+    ) -> dict[str, Any]:
+        """跨 Worker 限速管理员登录；Redis 不可用时关闭认证并返回 503。"""
+        login_name = payload.get("login", "")
+        client_ip = login_client_ip(request)
+        try:
+            redis = Redis.from_url(
+                config.redis_url,
+                socket_connect_timeout=2,
+                socket_timeout=2,
+                decode_responses=False,
+            )
+        except Exception as error:
+            logger.exception("登录限速存储初始化失败")
+            raise HTTPException(status_code=503, detail="登录服务暂不可用，请稍后重试") from error
+        try:
+            reservation = await reserve_login_attempt(redis, login_name, client_ip)
+        except Exception as error:
+            logger.exception("登录限速存储不可用")
+            try:
+                await redis.aclose()
+            except Exception:
+                logger.exception("关闭登录限速连接失败")
+            raise HTTPException(status_code=503, detail="登录服务暂不可用，请稍后重试") from error
+        if reservation is None:
+            try:
+                await redis.aclose()
+            except Exception:
+                logger.exception("关闭登录限速连接失败")
+            raise HTTPException(status_code=429, detail="登录尝试过多，请稍后重试")
+
+        try:
+            context = await authenticate(config, login_name, payload.get("password", ""))
+        except Exception as error:
+            try:
+                await finish_login_attempt(redis, reservation, succeeded=None)
+            except Exception:
+                logger.exception("登录失败预占释放异常")
+            try:
+                await redis.aclose()
+            except Exception:
+                logger.exception("关闭登录限速连接失败")
+            logger.exception("登录认证数据库操作失败")
+            raise HTTPException(status_code=503, detail="登录服务暂不可用，请稍后重试") from error
+
+        try:
+            await finish_login_attempt(redis, reservation, succeeded=context is not None)
+        except Exception as error:
+            # 结算响应丢失时不能重放脚本，否则成功认证可能被重复计为失败。
+            logger.exception("登录限速状态结算失败")
+            if context is not None:
+                try:
+                    await revoke_token(config, context.get("token"))
+                except Exception:
+                    logger.exception("登录限速结算失败后撤销孤立会话失败")
+            raise HTTPException(status_code=503, detail="登录服务暂不可用，请稍后重试") from error
+        finally:
+            try:
+                await redis.aclose()
+            except Exception:
+                logger.exception("关闭登录限速连接失败")
+
         if context is None:
             raise HTTPException(status_code=401, detail="用户名或密码错误")
         token = context.pop("token")
@@ -1110,16 +2029,115 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             secure=config.cookie_secure,
             max_age=config.session_ttl_hours * 3600,
         )
+        response.set_cookie(
+            "ragmanage_csrf",
+            session_csrf_token(config.csrf_secret_value, token),
+            httponly=False,
+            samesite="lax",
+            secure=config.cookie_secure,
+            max_age=config.session_ttl_hours * 3600,
+        )
         return context
+
+    @app.get("/api/v1/auth/csrf")
+    async def csrf_token(request: Request, response: Response) -> dict[str, str]:
+        """为部署升级前已有的有效 Session 补发会话绑定 CSRF Cookie。"""
+        context = await _authenticated_user(config, request)
+        if context.get("api_key_id") is not None:
+            raise HTTPException(status_code=403, detail="CSRF token 仅适用于浏览器会话")
+        session_token = request.cookies.get(SESSION_COOKIE, "")
+        token = session_csrf_token(config.csrf_secret_value, session_token)
+        response.set_cookie(
+            "ragmanage_csrf",
+            token,
+            httponly=False,
+            samesite="lax",
+            secure=config.cookie_secure,
+            max_age=config.session_ttl_hours * 3600,
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return {"csrf_token": token}
 
     @app.post("/api/v1/auth/logout", status_code=204)
     async def logout(request: Request, response: Response) -> None:
         await revoke_token(config, request.cookies.get(SESSION_COOKIE))
         response.delete_cookie(SESSION_COOKIE)
+        response.delete_cookie("ragmanage_csrf")
 
     @app.get("/api/v1/auth/me")
     async def me(request: Request) -> dict[str, Any]:
         return await _authenticated_user(config, request)
+
+    @app.get("/api/v1/auth/sessions")
+    async def list_sessions(request: Request) -> dict[str, Any]:
+        """列出当前账号仍有效的浏览器 Session，并标记当前请求对应的会话。"""
+        context = await _authenticated_user(config, request)
+        if context.get("api_key_id") is not None:
+            raise HTTPException(status_code=403, detail="会话管理仅适用于浏览器登录")
+        token = request.cookies.get(SESSION_COOKIE, "")
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        connection = await _database(config)
+        try:
+            rows = await connection.fetch(
+                """
+                SELECT id::text, created_at, last_seen_at, expires_at,
+                       token_hash = $2 AS is_current
+                FROM sessions
+                WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
+                ORDER BY last_seen_at DESC, id DESC
+                LIMIT $3
+                """,
+                int(context["user"]["id"]),
+                token_hash,
+                SESSION_LIST_LIMIT,
+            )
+            return {"items": [dict(row) for row in rows]}
+        finally:
+            await connection.close()
+
+    @app.delete("/api/v1/auth/sessions/{session_id}", status_code=204)
+    async def revoke_session(
+        session_id: int,
+        request: Request,
+        response: Response,
+    ) -> None:
+        """原子撤销本人指定的有效 Session；撤销当前会话时同步清除浏览器 Cookie。"""
+        context = await _authenticated_user(config, request)
+        if context.get("api_key_id") is not None:
+            raise HTTPException(status_code=403, detail="会话管理仅适用于浏览器登录")
+        current_token = request.cookies.get(SESSION_COOKIE, "")
+        current_hash = hashlib.sha256(current_token.encode("utf-8")).hexdigest()
+        connection = await _database(config)
+        try:
+            async with connection.transaction():
+                session = await connection.fetchrow(
+                    """
+                    UPDATE sessions SET revoked_at = now()
+                    WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
+                      AND expires_at > now()
+                    RETURNING id, user_id, token_hash
+                    """,
+                    session_id,
+                    int(context["user"]["id"]),
+                )
+                if session is None:
+                    raise HTTPException(status_code=404, detail="有效会话不存在")
+                await connection.execute(
+                    """
+                    INSERT INTO audit_logs(
+                      actor_id, action, target_type, target_id, change_summary
+                    ) VALUES ($1, 'auth.session.revoked', 'session', $2, $3::jsonb)
+                    """,
+                    int(context["user"]["id"]),
+                    str(session["id"]),
+                    json.dumps({"result": "revoked"}, ensure_ascii=False),
+                )
+                is_current = session["token_hash"] == current_hash
+            if is_current:
+                response.delete_cookie(SESSION_COOKIE)
+                response.delete_cookie("ragmanage_csrf")
+        finally:
+            await connection.close()
 
     @app.post("/api/v1/auth/password", status_code=204)
     async def change_password(
@@ -1168,6 +2186,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ),
                 )
             response.delete_cookie(SESSION_COOKIE)
+            response.delete_cookie("ragmanage_csrf")
         finally:
             await connection.close()
 
@@ -1557,8 +2576,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 """,
                 api_key_id,
             )
+            daily = await connection.fetch(
+                """
+                SELECT date_trunc('day', created_at)::date::text AS period,
+                       count(*)::int AS request_count,
+                       COALESCE(sum(prompt_tokens), 0)::bigint AS prompt_tokens,
+                       COALESCE(sum(completion_tokens), 0)::bigint AS completion_tokens,
+                       COALESCE(sum(total_tokens), 0)::bigint AS total_tokens
+                FROM api_key_usage
+                WHERE api_key_id = $1 AND created_at >= now() - interval '30 days'
+                GROUP BY 1 ORDER BY 1 DESC
+                """,
+                api_key_id,
+            )
+            monthly = await connection.fetch(
+                """
+                SELECT date_trunc('month', created_at)::date::text AS period,
+                       count(*)::int AS request_count,
+                       COALESCE(sum(prompt_tokens), 0)::bigint AS prompt_tokens,
+                       COALESCE(sum(completion_tokens), 0)::bigint AS completion_tokens,
+                       COALESCE(sum(total_tokens), 0)::bigint AS total_tokens
+                FROM api_key_usage
+                WHERE api_key_id = $1 AND created_at >= now() - interval '12 months'
+                GROUP BY 1 ORDER BY 1 DESC
+                """,
+                api_key_id,
+            )
             return {
                 "summary": dict(summary),
+                "daily": [dict(row) for row in daily],
+                "monthly": [dict(row) for row in monthly],
                 "recent_limit": API_KEY_USAGE_RECENT_LIMIT,
                 "items": [dict(row) for row in rows],
             }
@@ -2416,6 +3463,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             await connection.close()
 
+    @app.post("/api/v1/admin/menus", status_code=201)
+    async def create_menu(payload: MenuCreate, request: Request) -> dict[str, Any]:
+        """创建菜单并校验父级存在，避免形成悬挂层级。"""
+        context = await _authenticated_user(config, request)
+        if context["user"]["platform_role"] != "platform_admin":
+            raise HTTPException(status_code=403, detail="只有平台管理员可以管理菜单")
+        connection = await _database(config)
+        try:
+            if payload.parent_id is not None:
+                parent_exists = await connection.fetchval(
+                    "SELECT EXISTS (SELECT 1 FROM menus WHERE id = $1)", payload.parent_id
+                )
+                if not parent_exists:
+                    raise HTTPException(status_code=400, detail="父级菜单不存在")
+            row = await connection.fetchrow(
+                """
+                INSERT INTO menus(code, name, kind, parent_id, route, icon, permission_code,
+                                  sort_order, visible, status)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+                RETURNING id::text, code, name, kind, parent_id::text, route, icon,
+                          permission_code, sort_order, visible, status
+                """,
+                payload.code,
+                payload.name,
+                payload.kind,
+                payload.parent_id,
+                payload.route,
+                payload.icon,
+                payload.permission_code,
+                payload.sort_order,
+                payload.visible,
+            )
+            if row is None:
+                raise HTTPException(status_code=500, detail="菜单创建失败")
+            return dict(row)
+        except asyncpg.UniqueViolationError as error:
+            raise HTTPException(status_code=409, detail="菜单编码或权限标识已存在") from error
+        finally:
+            await connection.close()
+
     @app.patch("/api/v1/admin/menus/{menu_id}")
     async def update_menu(menu_id: int, payload: MenuPatch, request: Request) -> dict[str, Any]:
         context = await _authenticated_user(config, request)
@@ -2426,6 +3513,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="没有需要修改的字段")
         connection = await _database(config)
         try:
+            if payload.parent_id == menu_id:
+                raise HTTPException(status_code=400, detail="菜单不能挂载到自身")
+            if payload.parent_id is not None:
+                parent_exists = await connection.fetchval(
+                    "SELECT EXISTS (SELECT 1 FROM menus WHERE id = $1)", payload.parent_id
+                )
+                if not parent_exists:
+                    raise HTTPException(status_code=400, detail="父级菜单不存在")
             assignments = []
             parameters: list[Any] = [menu_id]
             for index, (key, value) in enumerate(values.items(), 2):
@@ -2453,10 +3548,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         connection = await _database(config)
         try:
             rows = await connection.fetch(
-                "SELECT id::text, code, name, scope, description, is_system "
-                "FROM roles ORDER BY scope, id"
+                """
+                SELECT r.id::text, r.code, r.name, r.scope, r.description, r.is_system,
+                       COALESCE(array_agg(rm.menu_id ORDER BY rm.menu_id)
+                         FILTER (WHERE rm.menu_id IS NOT NULL), '{}') AS menu_ids
+                FROM roles r LEFT JOIN role_menus rm ON rm.role_id = r.id
+                GROUP BY r.id ORDER BY r.scope, r.id
+                """
             )
             return {"items": _rows(rows)}
+        finally:
+            await connection.close()
+
+    @app.patch("/api/v1/admin/roles/{role_id}/menus")
+    async def update_role_menus(
+        role_id: int, payload: RoleMenuPatch, request: Request
+    ) -> dict[str, Any]:
+        """原子替换角色菜单权限并记录变更前后集合，禁止修改系统角色。"""
+        context = await _authenticated_user(config, request)
+        _require_platform_admin(context)
+        menu_ids = sorted(set(payload.menu_ids))
+        connection = await _database(config)
+        try:
+            async with connection.transaction():
+                role = await connection.fetchrow(
+                    """
+                    SELECT id::text, code, name, scope, is_system
+                    FROM roles WHERE id = $1 FOR UPDATE
+                    """,
+                    role_id,
+                )
+                if role is None:
+                    raise HTTPException(status_code=404, detail="角色不存在")
+                if role["is_system"]:
+                    raise HTTPException(status_code=409, detail="系统角色不允许直接修改权限")
+                valid_ids = await connection.fetchval(
+                    "SELECT count(*)::int FROM menus WHERE id = ANY($1::bigint[])", menu_ids
+                )
+                if int(valid_ids or 0) != len(menu_ids):
+                    raise HTTPException(status_code=400, detail="存在无效菜单权限")
+                old_ids = await connection.fetchval(
+                    """
+                    SELECT COALESCE(array_agg(menu_id ORDER BY menu_id), '{}')
+                    FROM role_menus WHERE role_id = $1
+                    """,
+                    role_id,
+                )
+                await connection.execute("DELETE FROM role_menus WHERE role_id = $1", role_id)
+                if menu_ids:
+                    await connection.executemany(
+                        "INSERT INTO role_menus(role_id, menu_id) VALUES ($1, $2)",
+                        [(role_id, menu_id) for menu_id in menu_ids],
+                    )
+                await write_audit_event(
+                    connection,
+                    tenant_id=None,  # type: ignore[arg-type]
+                    actor_id=int(context["user"]["id"]),
+                    action="role.permissions.update",
+                    target_type="role",
+                    target_id=role_id,
+                    summary={
+                        "role_code": role["code"],
+                        "before_menu_ids": list(old_ids or []),
+                        "after_menu_ids": menu_ids,
+                    },
+                )
+            return {**dict(role), "menu_ids": menu_ids}
         finally:
             await connection.close()
 
@@ -3457,9 +4614,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 {"space_admin", "kb_admin", "editor"},
             )
             filename = _safe_filename(file.filename)
-            suffix = Path(filename).suffix.lower()
-            if suffix not in ALLOWED_DOCUMENT_TYPES:
-                raise HTTPException(status_code=415, detail="仅支持 Markdown、TXT、DOCX 和电子 PDF")
+            suffix = _validate_upload_type(filename, file.content_type)
             raw = await _read_upload(file, suffix)
             title = Path(filename).stem[:240] or "未命名文档"
             storage_key = (
@@ -3736,6 +4891,224 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             await connection.close()
 
+    @app.get("/api/v1/admin/users/{user_id}")
+    async def admin_user_detail(user_id: int, request: Request) -> dict[str, Any]:
+        """返回平台用户资料、当前空间授权和脱敏授权审计历史。"""
+        context = await _authenticated_user(config, request)
+        if context["user"]["platform_role"] != "platform_admin":
+            raise HTTPException(status_code=403, detail="只有平台管理员可以查看用户详情")
+        connection = await _database(config)
+        try:
+            user = await connection.fetchrow(
+                """
+                SELECT u.id::text, u.login, u.display_name, u.status, pr.code AS platform_role,
+                       u.last_login_at, u.created_at
+                FROM users u LEFT JOIN roles pr ON pr.id = u.platform_role_id
+                WHERE u.id = $1
+                """,
+                user_id,
+            )
+            if user is None:
+                raise HTTPException(status_code=404, detail="用户不存在")
+            memberships = await connection.fetch(
+                """
+                SELECT tm.tenant_id::text, t.code AS tenant_code, t.name AS tenant_name,
+                       r.code AS role_code, tm.status, tm.created_at
+                FROM tenant_members tm
+                JOIN tenants t ON t.id = tm.tenant_id
+                JOIN roles r ON r.id = tm.role_id
+                WHERE tm.user_id = $1 ORDER BY tm.created_at DESC
+                """,
+                user_id,
+            )
+            history = await connection.fetch(
+                """
+                SELECT id::text, action, target_type, target_id, change_summary, created_at
+                FROM audit_logs
+                WHERE target_type = 'user' AND target_id = $1
+                  AND action IN ('user.create', 'user.update', 'space_member.add',
+                                 'space_member.update', 'space_member.remove')
+                ORDER BY id DESC LIMIT 100
+                """,
+                str(user_id),
+            )
+            return {
+                "user": dict(user),
+                "memberships": _rows(memberships),
+                "history": _rows(history),
+            }
+        finally:
+            await connection.close()
+
+    @app.get("/api/v1/document-versions/{version_id}/download")
+    async def download_document_version(version_id: int, request: Request) -> Response:
+        """按文档可见性提供原文件下载，拒绝跨租户、未发布版本和路径逃逸。"""
+        context = await _authenticated_user(config, request)
+        connection = await _database(config)
+        try:
+            version = await connection.fetchrow(
+                """
+                SELECT dv.id, dv.document_id, dv.storage_key, dv.version_no,
+                       dv.mime_type, d.title, d.tenant_id, d.knowledge_base_id
+                FROM document_versions dv JOIN documents d ON d.id = dv.document_id
+                WHERE dv.id = $1
+                """,
+                version_id,
+            )
+            if version is None:
+                raise HTTPException(status_code=404, detail="文档版本不存在")
+            access = await _document_access(connection, context, int(version["document_id"]))
+            role = _role_for_access(access)
+            if role in {"reader", "customer_reader"}:
+                visible = access["status"] == "active" and access["active_release_id"] is not None
+                if visible:
+                    visible = await connection.fetchval(
+                        """
+                        SELECT EXISTS (
+                          SELECT 1 FROM release_items
+                          WHERE release_id = $1 AND document_id = $2
+                            AND document_version_id = $3
+                        )
+                        """,
+                        access["active_release_id"],
+                        version["document_id"],
+                        version_id,
+                    )
+                if not visible:
+                    raise HTTPException(status_code=404, detail="文档版本不存在")
+            root = config.storage_root.resolve()
+            path = (root / str(version["storage_key"])).resolve()
+            if root not in path.parents or not path.is_file():
+                raise HTTPException(status_code=404, detail="文件不存在")
+            extension = str(version["mime_type"]).split("/")[-1]
+            safe_name = f"document-v{int(version['version_no'])}.{extension}"
+            return FileResponse(
+                path,
+                media_type=str(version["mime_type"]),
+                filename=safe_name,
+                headers={"X-Content-Type-Options": "nosniff"},
+            )
+        finally:
+            await connection.close()
+
+    @app.post("/api/v1/documents/{document_id}/reparse", status_code=202)
+    async def reparse_document(document_id: int, request: Request) -> dict[str, Any]:
+        """重新排队文档最新版本的解析任务，复用原文件和版本记录。"""
+        context = await _authenticated_user(config, request)
+        connection = await _database(config)
+        try:
+            document = await connection.fetchrow(
+                """
+                SELECT d.id, d.tenant_id, d.knowledge_base_id, dv.id AS version_id
+                FROM documents d JOIN document_versions dv ON dv.id = d.desired_version_id
+                WHERE d.id = $1
+                """,
+                document_id,
+            )
+            if document is None:
+                raise HTTPException(status_code=404, detail="文档不存在")
+            await _require_knowledge_base_role(
+                connection,
+                context,
+                int(document["knowledge_base_id"]),
+                {"space_admin", "kb_admin", "editor"},
+            )
+            task = await connection.fetchrow(
+                """
+                SELECT t.id, t.state, t.task_type, t.created_at
+                FROM tasks t JOIN task_items ti ON ti.task_id = t.id
+                WHERE t.task_type = 'document_parse' AND ti.target_id = $1
+                ORDER BY t.id DESC LIMIT 1
+                """,
+                int(document["version_id"]),
+            )
+            if task is None:
+                raise HTTPException(status_code=409, detail="该文档没有可重新解析的任务")
+            if task["state"] in {"queued", "running"}:
+                raise HTTPException(status_code=409, detail="文档解析任务正在执行")
+            async with connection.transaction():
+                await connection.execute(
+                    """
+                    UPDATE tasks SET state = 'queued', error = NULL,
+                        lease_until = NULL, updated_at = now()
+                    WHERE id = $1
+                    """,
+                    task["id"],
+                )
+                await connection.execute(
+                    """
+                    UPDATE task_items SET state = 'queued', error = NULL, updated_at = now()
+                    WHERE task_id = $1
+                    """,
+                    task["id"],
+                )
+                await connection.execute(
+                    """
+                    INSERT INTO outbox_events(tenant_id, event_type, payload)
+                    VALUES ($1, 'document.parse.requested', $2::jsonb)
+                    """,
+                    document["tenant_id"],
+                    json.dumps({"task_id": str(task["id"])}, ensure_ascii=False),
+                )
+            return {**dict(task), "state": "queued", "version_id": str(document["version_id"])}
+        finally:
+            await connection.close()
+
+    @app.get("/api/v1/documents/{document_id}/compare")
+    async def compare_document_versions(
+        document_id: int,
+        request: Request,
+        before_version_id: int,
+        after_version_id: int,
+    ) -> dict[str, Any]:
+        """比较同一文档的两个版本切片，权限沿用文档详情访问边界。"""
+        if before_version_id == after_version_id:
+            raise HTTPException(status_code=400, detail="待比较的版本必须不同")
+        context = await _authenticated_user(config, request)
+        connection = await _database(config)
+        try:
+            access = await _document_access(connection, context, document_id)
+            versions = await connection.fetch(
+                """
+                SELECT id, version_no FROM document_versions
+                WHERE document_id = $1 AND id = ANY($2::bigint[])
+                """,
+                document_id,
+                [before_version_id, after_version_id],
+            )
+            if len(versions) != 2:
+                raise HTTPException(status_code=404, detail="文档版本不存在")
+            chunks = await connection.fetch(
+                """
+                SELECT da.document_version_id, c.ordinal, c.content
+                FROM document_artifacts da JOIN chunks c ON c.artifact_id = da.id
+                WHERE da.document_version_id = ANY($1::bigint[])
+                ORDER BY da.document_version_id, c.ordinal
+                """,
+                [before_version_id, after_version_id],
+            )
+            before = [
+                dict(row) for row in chunks if int(row["document_version_id"]) == before_version_id
+            ]
+            after = [
+                dict(row) for row in chunks if int(row["document_version_id"]) == after_version_id
+            ]
+            version_map = {int(row["id"]): int(row["version_no"]) for row in versions}
+            return {
+                "document": {"id": str(access["id"]), "title": access["title"]},
+                "before": {
+                    "id": str(before_version_id),
+                    "version_no": version_map[before_version_id],
+                },
+                "after": {
+                    "id": str(after_version_id),
+                    "version_no": version_map[after_version_id],
+                },
+                "diff": _version_diff(before, after),
+            }
+        finally:
+            await connection.close()
+
     @app.get("/api/v1/artifacts/{artifact_id}/chunks")
     async def artifact_chunks(artifact_id: int, request: Request) -> dict[str, Any]:
         context = await _authenticated_user(config, request)
@@ -3816,7 +5189,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 SELECT ib.id::text, ib.tenant_id::text, ib.knowledge_base_id::text,
                        kb.name AS knowledge_base_name, ib.input_epoch, ib.state, ib.error,
                        ib.created_at, ib.updated_at, ib.task_id::text,
-                       ib.embedding_profile_id::text, ep.model_name, ep.model_revision,
+                       ib.embedding_profile_id::text, ib.runtime_profile_id::text,
+                       ep.model_name, ep.model_revision,
                        ep.dimension, ep.definition_hash AS embedding_definition_hash,
                        me.provider, me.base_url, kr.id::text AS release_id,
                        CASE WHEN kb.active_release_id = kr.id THEN true ELSE false END
@@ -3857,6 +5231,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 SELECT ib.id::text, ib.tenant_id::text, ib.knowledge_base_id::text,
                        ib.input_epoch, ib.state, ib.error, ib.created_at, ib.updated_at,
                        ib.task_id::text, ib.embedding_profile_id::text,
+                       ib.runtime_profile_id::text,
                        ep.model_name, ep.model_revision, ep.dimension,
                        ep.definition_hash AS embedding_definition_hash,
                        me.provider, me.base_url, kr.id::text AS release_id,
@@ -4125,7 +5500,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     actor_id=int(context["user"]["id"]),
                     action="conversation.delete",
                     target_type="conversation",
-                    target_id=conversation_id,
+                    target_id=str(conversation_id),
                     summary={
                         "knowledge_base_id": str(conversation["knowledge_base_id"]),
                         "before": {"status": str(conversation["status"])},
@@ -4910,9 +6285,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     """
                     INSERT INTO index_builds(
                       tenant_id, knowledge_base_id, base_release_id, input_epoch,
-                      ingestion_profile_id, embedding_profile_id, task_id,
+                      ingestion_profile_id, embedding_profile_id, runtime_profile_id, task_id,
                       state, created_by
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued', $8)
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9)
                     RETURNING id::text, task_id::text, state, input_epoch, created_at, updated_at
                     """,
                     access["tenant_id"],
@@ -4921,6 +6296,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     knowledge_base["content_epoch"],
                     ingestion_profile_id,
                     embedding_profile_id,
+                    knowledge_base["active_runtime_id"],
                     task["id"],
                     user_id,
                 )

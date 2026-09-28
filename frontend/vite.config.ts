@@ -16,6 +16,12 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    proxy: { '/api': process.env.VITE_API_PROXY_TARGET ?? 'http://127.0.0.1:8000' },
+    proxy: {
+      // Session 登录会校验 Origin 与 Host；开发代理必须保留浏览器访问的本地 authority。
+      '/api': {
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://127.0.0.1:8000',
+        changeOrigin: false,
+      },
+    },
   },
 })

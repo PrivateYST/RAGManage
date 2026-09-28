@@ -2,6 +2,7 @@
 import type { ApiKeyCreatePayload } from '../ApiKeyCreateDialog/type'
 import type { TenantRow } from '@/api/admin'
 import type {
+  ApiKeyUsageResponse,
   ApiKeyUsageRow,
   ApiKeyUsageSummary,
   CompanyApiKey,
@@ -29,6 +30,8 @@ export function useApiKeyManager() {
   const selected = shallowRef<CompanyApiKey | null>(null)
   const usage = shallowRef<ApiKeyUsageRow[]>([])
   const usageSummary = shallowRef<ApiKeyUsageSummary | null>(null)
+  const usageDaily = shallowRef<ApiKeyUsageResponse['daily']>([])
+  const usageMonthly = shallowRef<ApiKeyUsageResponse['monthly']>([])
   const usageRecentLimit = shallowRef(200)
   const loading = shallowRef(false)
   const usageLoading = shallowRef(false)
@@ -145,6 +148,8 @@ export function useApiKeyManager() {
     selected.value = item
     usage.value = []
     usageSummary.value = null
+    usageDaily.value = []
+    usageMonthly.value = []
     usageRecentLimit.value = 200
     usageLoading.value = true
     try {
@@ -152,6 +157,8 @@ export function useApiKeyManager() {
       if (requestSequence !== usageRequestSequence || selected.value?.id !== item.id) return
       usage.value = result.items
       usageSummary.value = result.summary
+      usageDaily.value = result.daily ?? []
+      usageMonthly.value = result.monthly ?? []
       usageRecentLimit.value = result.recent_limit
     } catch (cause) {
       if (requestSequence !== usageRequestSequence) return
@@ -190,6 +197,8 @@ export function useApiKeyManager() {
     selected,
     usage,
     usageSummary,
+    usageDaily,
+    usageMonthly,
     usageRecentLimit,
     loading,
     usageLoading,

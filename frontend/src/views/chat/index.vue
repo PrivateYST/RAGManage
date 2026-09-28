@@ -18,6 +18,7 @@ const {
   messages,
   question,
   loading,
+  loadError,
   sending,
   deletingConversationId,
   canSend,
@@ -33,6 +34,7 @@ const {
   showCitations,
   closeCitations,
   feedback,
+  loadConversations,
 } = useChatRun()
 
 const messageViewport = useTemplateRef<HTMLElement>('messageViewport')
@@ -90,6 +92,17 @@ watch([() => messages.value.length, latestMessageContent], async () => {
           </option>
         </select>
       </label>
+    </div>
+
+    <div
+      v-if="loadError"
+      class="mb-[10px] flex items-center justify-between gap-[12px] rounded-md border border-destructive/20 bg-destructive/5 px-[12px] py-[10px]"
+      role="alert"
+    >
+      <span class="text-xs text-destructive">{{ loadError }}</span>
+      <button class="secondary-button" type="button" @click="loadConversations">
+        重新加载会话
+      </button>
     </div>
 
     <div

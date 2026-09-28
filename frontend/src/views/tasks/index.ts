@@ -20,6 +20,8 @@ export function useTasksPage() {
   const knowledgeBaseId = shallowRef<TaskFilterValue>('all')
   const stateFilter = shallowRef<TaskFilterValue>('all')
   const loading = shallowRef(true)
+  // 页面级错误单独保留，除 Toast 外提供可重复操作的可访问反馈。
+  const errorMessage = shallowRef('')
   const busyTaskId = shallowRef<string | null>(null)
 
   const visibleTasks = computed(() =>
@@ -66,6 +68,7 @@ export function useTasksPage() {
   /** 首次进入页面或切换空间时同时刷新知识库选项和任务列表。 */
   async function loadData(): Promise<void> {
     loading.value = true
+    errorMessage.value = ''
     try {
       if (!auth.activeSpaceId) {
         knowledgeBases.value = []
@@ -79,7 +82,8 @@ export function useTasksPage() {
       knowledgeBases.value = kbResponse.items
       tasks.value = taskResponse.items
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '任务加载失败')
+      errorMessage.value = cause instanceof Error ? cause.message : '任务加载失败'
+      toast.error(errorMessage.value)
     } finally {
       loading.value = false
     }
@@ -88,6 +92,7 @@ export function useTasksPage() {
   async function refreshTasksForKnowledgeBase(value: TaskFilterValue): Promise<void> {
     if (!auth.activeSpaceId) return
     loading.value = true
+    errorMessage.value = ''
     try {
       tasks.value = (
         await fetchTasks({
@@ -96,7 +101,8 @@ export function useTasksPage() {
         })
       ).items
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '任务加载失败')
+      errorMessage.value = cause instanceof Error ? cause.message : '任务加载失败'
+      toast.error(errorMessage.value)
     } finally {
       loading.value = false
     }
@@ -149,6 +155,7 @@ export function useTasksPage() {
     knowledgeBaseId,
     stateFilter,
     loading,
+    errorMessage,
     busyTaskId,
     stateLabel,
     taskLabel,

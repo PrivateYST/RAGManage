@@ -11,6 +11,7 @@ import {
   Rocket,
   TriangleAlert,
 } from '@/components'
+import BuildDetailDialog from './components/BuildDetailDialog/index.vue'
 import CreateBuildDialog from './components/CreateBuildDialog/index.vue'
 import ReleaseDetailDialog from './components/ReleaseDetailDialog/index.vue'
 import ReleaseDiffDialog from './components/ReleaseDiffDialog/index.vue'
@@ -37,6 +38,11 @@ const {
   releaseBuildDetail,
   loadingReleaseDetail,
   releaseDetailError,
+  buildDetailOpen,
+  selectedBuild,
+  buildDetail,
+  loadingBuildDetail,
+  buildDetailError,
   rollbackDialogOpen,
   rollbackTarget,
   rollingBack,
@@ -60,6 +66,8 @@ const {
   handlePublishRelease,
   openReleaseDetail,
   closeReleaseDetail,
+  openBuildDetail,
+  closeBuildDetail,
   openRollbackDialog,
   closeRollbackDialog,
   handleRollbackRelease,
@@ -202,6 +210,9 @@ const buildColumns: AppTableColumn<BuildRow>[] = [
           </div>
         </template>
         <template #cell-actions="{ row: build }">
+          <button class="table-action-button" type="button" @click="openBuildDetail(build)">
+            <Box :size="13" aria-hidden="true" />详情
+          </button>
           <button
             class="table-action-button"
             type="button"
@@ -251,6 +262,14 @@ const buildColumns: AppTableColumn<BuildRow>[] = [
       :release="selectedRelease"
       :detail="releaseBuildDetail"
       @close="closeReleaseDetail"
+    />
+    <BuildDetailDialog
+      :open="buildDetailOpen"
+      :loading="loadingBuildDetail"
+      :error="buildDetailError"
+      :selected-build="selectedBuild"
+      :detail="buildDetail"
+      @close="closeBuildDetail"
     />
     <ReleaseRollbackDialog
       :open="rollbackDialogOpen"

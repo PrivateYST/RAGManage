@@ -449,8 +449,12 @@ async def stream_generation_run(
     user_id: int,
     api_key_id: str | None = None,
     api_key_tenant_id: int | None = None,
+    max_tokens: int | None = None,
 ) -> AsyncIterator[str]:
-    """执行检索、生成和引用校验，并以 SSE 返回可恢复的运行事件。"""
+    """执行检索、生成和引用校验，并以 SSE 返回可恢复的运行事件。
+
+    ``max_tokens`` 只允许受限缩短单次 Key 输出预算；温度始终来自冻结的 Runtime Profile。
+    """
     if not settings.database_url:
         yield sse_event("error", {"code": "DATABASE_NOT_CONFIGURED", "retryable": True})
         return
@@ -715,6 +719,10 @@ async def stream_generation_run(
             str(runtime_definition.get("answer_rules", "")),
         )
         generation_model = client.settings.generation_model
+        effective_max_tokens = (
+            max_tokens if max_tokens is not None else client.settings.generation_max_tokens
+        )
+        effective_temperature = float(generation_definition.get("temperature", 0.2))
         prompt_tokens_estimate = sum(
             estimate_token_count(item.get("content", "")) for item in messages
         )
@@ -727,14 +735,14 @@ async def stream_generation_run(
                 requested_tokens=sum(
                     len(item.get("content", "").encode("utf-8")) for item in messages
                 )
-                + client.settings.generation_max_tokens,
+                + effective_max_tokens,
             )
         generation_started = True
         await persist_quota_progress()
         async for event in client.stream_chat_events(
             messages,
-            temperature=float(generation_definition.get("temperature", 0.2)),
-            max_tokens=(client.settings.generation_max_tokens if api_key_id is not None else None),
+            temperature=effective_temperature,
+            max_tokens=(effective_max_tokens if api_key_id is not None else None),
         ):
             if event["usage"] is not None:
                 gateway_usage = {**event["usage"], "usage_source": "gateway"}

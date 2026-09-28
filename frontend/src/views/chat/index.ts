@@ -41,6 +41,8 @@ export function useChatRun() {
   const question = shallowRef('')
   const currentRun = shallowRef<GenerationRun | null>(null)
   const loading = shallowRef(true)
+  // 会话/知识库初始加载失败需保留错误，用户才能在 Toast 消失后恢复上下文。
+  const loadError = shallowRef('')
   const sending = shallowRef(false)
   const deletingConversationId = shallowRef('')
   const citationPanelOpen = shallowRef(false)
@@ -58,6 +60,7 @@ export function useChatRun() {
   )
 
   async function loadKnowledgeBases(): Promise<void> {
+    loadError.value = ''
     if (!auth.activeSpaceId) {
       knowledgeBases.value = []
       knowledgeBaseId.value = ''
@@ -72,7 +75,8 @@ export function useChatRun() {
           ''
       }
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '知识库加载失败')
+      loadError.value = cause instanceof Error ? cause.message : '知识库加载失败'
+      toast.error(loadError.value)
     }
   }
 
@@ -86,6 +90,7 @@ export function useChatRun() {
       return
     }
     loading.value = true
+    loadError.value = ''
     try {
       conversations.value = (await fetchConversations(knowledgeBaseId.value)).items
       const storedThreadId = getThreadId(knowledgeBaseId.value)
@@ -97,7 +102,8 @@ export function useChatRun() {
       if (conversationId.value) setThreadId(knowledgeBaseId.value, conversationId.value)
       if (conversationId.value) await loadConversation(conversationId.value)
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '会话加载失败')
+      loadError.value = cause instanceof Error ? cause.message : '会话加载失败'
+      toast.error(loadError.value)
     } finally {
       loading.value = false
     }
@@ -323,6 +329,7 @@ export function useChatRun() {
     question,
     currentRun,
     loading,
+    loadError,
     sending,
     deletingConversationId,
     canSend,

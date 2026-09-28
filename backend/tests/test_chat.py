@@ -375,6 +375,37 @@ def test_api_key_request_id_cannot_be_reused_in_another_conversation() -> None:
     assert "其他会话" in str(raised.value.detail)
 
 
+def test_native_api_key_run_obeys_shared_concurrency_limit() -> None:
+    """原生问答入口与兼容入口共用 Key 并发限制，防止客户通过其他路由绕过上限。"""
+    connection = FakeRunConnection()
+    active_count = AsyncMock(return_value=5)
+    connection.fetchval = active_count  # type: ignore[method-assign]
+    connection.fetchrow = AsyncMock(return_value=None)  # type: ignore[method-assign]
+    conversation = {
+        "id": 13,
+        "tenant_id": 7,
+        "knowledge_base_id": 9,
+        "active_release_id": 5,
+        "title": "已有会话",
+    }
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(
+            _create_generation_run(
+                connection,  # type: ignore[arg-type]
+                conversation=conversation,  # type: ignore[arg-type]
+                user_id=3,
+                request_id=UUID("11111111-1111-4111-8111-111111111111"),
+                question="如何办理出院？",
+                api_key_id="8",
+            )
+        )
+
+    assert raised.value.status_code == 429
+    assert "并发问答数" in str(raised.value.detail)
+    active_count.assert_awaited_once()
+
+
 def test_history_answer_is_hidden_when_evidence_source_is_disabled() -> None:
     connection = FakeSnapshotConnection(
         {
@@ -455,6 +486,7 @@ def test_api_key_snapshot_converts_identity_ids_to_database_integers() -> None:
 
 
 def test_create_run_endpoint_checks_conversation_access_and_is_idempotent(monkeypatch: Any) -> None:
+    """使用公开 UUID 访问会话，并确认授权后创建逻辑运行。"""
     connection = FakeEndpointConnection()
     context = {"user": {"id": "3"}}
     conversation = {
@@ -469,12 +501,13 @@ def test_create_run_endpoint_checks_conversation_access_and_is_idempotent(monkey
     create_run = AsyncMock(return_value=expected)
     monkeypatch.setattr("app.main._authenticated_user", AsyncMock(return_value=context))
     monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+    monkeypatch.setattr("app.main._conversation_id_from_public", AsyncMock(return_value=13))
     monkeypatch.setattr("app.main._conversation_access", access)
     monkeypatch.setattr("app.main._create_generation_run", create_run)
 
     with TestClient(create_app(Settings())) as client:
         response = client.post(
-            "/api/v1/conversations/13/runs",
+            "/api/v1/conversations/11111111-1111-4111-8111-111111111111/runs",
             json={
                 "question": "如何办理出院？",
                 "request_id": "11111111-1111-4111-8111-111111111111",
@@ -489,6 +522,7 @@ def test_create_run_endpoint_checks_conversation_access_and_is_idempotent(monkey
 
 
 def test_cancel_run_closes_message_and_active_retrieval_trace(monkeypatch: Any) -> None:
+    """公开运行 UUID 解析后，取消操作应关闭消息和活动检索 Trace。"""
     connection = FakeEndpointConnection()
     running = {
         "id": "41",
@@ -502,10 +536,11 @@ def test_cancel_run_closes_message_and_active_retrieval_trace(monkeypatch: Any) 
         "app.main._authenticated_user", AsyncMock(return_value={"user": {"id": "3"}})
     )
     monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+    monkeypatch.setattr("app.main._run_id_from_public", AsyncMock(return_value=41))
     monkeypatch.setattr("app.main.load_run_snapshot", snapshot_loader)
 
     with TestClient(create_app(Settings())) as client:
-        response = client.post("/api/v1/runs/41/cancel")
+        response = client.post("/api/v1/runs/11111111-1111-4111-8111-111111111111/cancel")
 
     assert response.status_code == 200
     assert response.json()["state"] == "cancelled"
@@ -515,6 +550,7 @@ def test_cancel_run_closes_message_and_active_retrieval_trace(monkeypatch: Any) 
 
 
 def test_retry_run_reuses_original_question_and_user_message(monkeypatch: Any) -> None:
+    """公开运行 UUID 解析后，重试应复用原问题与用户消息记录。"""
     connection = FakeEndpointConnection()
     cancelled = {
         "id": "41",
@@ -537,13 +573,14 @@ def test_retry_run_reuses_original_question_and_user_message(monkeypatch: Any) -
         "app.main._authenticated_user", AsyncMock(return_value={"user": {"id": "3"}})
     )
     monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+    monkeypatch.setattr("app.main._run_id_from_public", AsyncMock(return_value=41))
     monkeypatch.setattr("app.main.load_run_snapshot", AsyncMock(return_value=cancelled))
     monkeypatch.setattr("app.main._conversation_access", AsyncMock(return_value=conversation))
     monkeypatch.setattr("app.main._create_generation_run", create_run)
 
     with TestClient(create_app(Settings())) as client:
         response = client.post(
-            "/api/v1/runs/41/retry",
+            "/api/v1/runs/11111111-1111-4111-8111-111111111111/retry",
             json={"request_id": "22222222-2222-4222-8222-222222222222"},
         )
 
@@ -597,9 +634,7 @@ def test_second_event_stream_does_not_execute_running_job(monkeypatch: Any) -> N
     running = {**queued, "state": "running"}
     search = AsyncMock(side_effect=AssertionError("不应重复执行检索"))
     monkeypatch.setattr("app.rag.chat.asyncpg.connect", AsyncMock(return_value=connection))
-    monkeypatch.setattr(
-        "app.rag.chat.load_run_snapshot", AsyncMock(side_effect=[queued, running])
-    )
+    monkeypatch.setattr("app.rag.chat.load_run_snapshot", AsyncMock(side_effect=[queued, running]))
     monkeypatch.setattr("app.rag.chat.execute_vector_search", search)
 
     async def collect() -> list[str]:

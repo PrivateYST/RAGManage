@@ -32,9 +32,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     """无跨 Key 重复 UUID 时恢复早期全局唯一规则，否则明确拒绝有损回滚。"""
     op.execute("DROP INDEX generation_runs_api_key_request_unique")
-    op.execute(
-        "ALTER TABLE api_key_usage DROP CONSTRAINT api_key_usage_key_request_unique"
-    )
+    op.execute("ALTER TABLE api_key_usage DROP CONSTRAINT api_key_usage_key_request_unique")
     op.execute(
         """
         DO $$

@@ -1,4 +1,19 @@
+/** 浏览器登录身份、菜单与会话管理 API 契约。 */
 import { apiRequest } from './client'
+
+/** 登录会话的公开元信息；凭据和客户端敏感信息不会由服务端返回。 */
+export interface AuthSession {
+  id: string
+  created_at: string
+  last_seen_at: string
+  expires_at: string
+  is_current: boolean
+}
+
+/** 当前账号仍有效的会话集合。 */
+export interface AuthSessionList {
+  items: AuthSession[]
+}
 
 export interface User {
   id: string
@@ -52,5 +67,17 @@ export function changePassword(currentPassword: string, newPassword: string): Pr
   return apiRequest<void>('/api/v1/auth/password', {
     method: 'POST',
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  })
+}
+
+/** 查询当前浏览器账号的有效会话；服务端仅返回当前用户拥有的记录。 */
+export function listSessions(): Promise<AuthSessionList> {
+  return apiRequest<AuthSessionList>('/api/v1/auth/sessions')
+}
+
+/** 撤销当前用户指定的有效会话；撤销当前项时服务端同步清理认证 Cookie。 */
+export function revokeSession(sessionId: string): Promise<void> {
+  return apiRequest<void>(`/api/v1/auth/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
   })
 }

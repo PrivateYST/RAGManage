@@ -38,6 +38,7 @@ services:
       # An empty key keeps the platform bootable; model operations still fail closed in ModelGatewayClient.
       MODEL_GATEWAY_API_KEY: ${MODEL_GATEWAY_API_KEY:-}
       API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:-}
+      CSRF_SECRET: ${CSRF_SECRET:?Set CSRF_SECRET to a stable random value}
       MODEL_GATEWAY_ALLOWED_MODELS: ${MODEL_GATEWAY_ALLOWED_MODELS:-qwen3-embedding:0.6b,qwen3.8:27b}
       GENERATION_MODEL: ${GENERATION_MODEL:?Set GENERATION_MODEL}
       GENERATION_MAX_TOKENS: ${GENERATION_MAX_TOKENS:-1024}

@@ -15,6 +15,7 @@ export interface BuildRow {
   model_revision: string
   dimension: number
   embedding_profile_id: string
+  runtime_profile_id: string | null
   embedding_definition_hash: string
   provider: string
   base_url: string
@@ -37,6 +38,7 @@ export interface BuildDetailRecord {
   error: Record<string, unknown> | null
   task_id: string
   embedding_profile_id: string
+  runtime_profile_id: string | null
   model_name: string
   model_revision: string
   dimension: number

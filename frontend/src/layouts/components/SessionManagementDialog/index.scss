@@ -1,0 +1,22 @@
+/** 会话弹窗内部布局；色彩、控件和弹层行为沿用 shadcn-vue 语义变量。 */
+.session-dialog {
+  width: min(620px, 100%);
+}
+.session-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--destructive);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--destructive);
+  font-size: 11px;
+}
+
+@media (max-width: 480px) {
+  .session-error {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import math
+from typing import Any
 
 import httpx
 import pytest
@@ -16,6 +17,17 @@ from app.rag.models import (
     openai_embedding_values,
     validate_embeddings,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolate_persisted_gateway_key(monkeypatch: Any) -> None:
+    """模型客户端单测只读取显式 Settings，不加载工作站数据库中的真实凭据。"""
+
+    async def skip_persisted_key(settings: Settings) -> bool:
+        """保留当前测试配置，阻断与平台数据库状态的耦合。"""
+        return bool(settings.model_gateway_api_key.get_secret_value())
+
+    monkeypatch.setattr("app.rag.models.load_persisted_model_gateway_key", skip_persisted_key)
 
 
 @pytest.mark.parametrize(
@@ -115,9 +127,7 @@ def test_model_client_emits_gateway_usage_tail_frame() -> None:
         client = ModelGatewayClient(settings, transport=httpx.MockTransport(handler))
         return [
             event
-            async for event in client.stream_chat_events(
-                [{"role": "user", "content": "问题"}]
-            )
+            async for event in client.stream_chat_events([{"role": "user", "content": "问题"}])
         ]
 
     assert asyncio.run(collect()) == [
@@ -131,6 +141,7 @@ def test_model_client_emits_gateway_usage_tail_frame() -> None:
 
 def test_embedding_usage_is_read_from_gateway_response() -> None:
     """嵌入接口返回 usage 时必须使用真实输入 Token，而不是字符估算。"""
+
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/embeddings"
         return httpx.Response(

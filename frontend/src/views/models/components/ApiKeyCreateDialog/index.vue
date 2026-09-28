@@ -36,12 +36,21 @@ const { form, error, submit } = useApiKeyCreateDialog(props, (event, payload) =>
         </button>
       </header>
       <p class="api-key-dialog-description">
-        系统会为医院生成一把 `sk-` 格式的模型网关 API Key；医院员工无需逐个注册，
-        由 RAGManage 统一校验、限额并转发到 Open WebUI。
+        系统会为医院生成一把 `sk-` 格式的模型网关 API Key；医院员工无需逐个注册， 由 RAGManage
+        统一校验、限额并转发到 Open WebUI。
       </p>
-      <form class="api-key-form" @submit.prevent="submit">
+      <form
+        class="api-key-form"
+        :aria-busy="submitting ? 'true' : 'false'"
+        @submit.prevent="submit"
+      >
         <label
-          >客户空间<select v-model="form.tenantId" required>
+          >客户空间<select
+            v-model="form.tenantId"
+            required
+            :aria-invalid="error ? 'true' : 'false'"
+            :aria-describedby="error ? 'api-key-form-error' : undefined"
+          >
             <option v-for="tenant in tenants" :key="tenant.id" :value="tenant.id">
               {{ tenant.name }}
             </option>
@@ -53,6 +62,8 @@ const { form, error, submit } = useApiKeyCreateDialog(props, (event, payload) =>
             maxlength="120"
             placeholder="例如：客户 A 生产环境"
             required
+            :aria-invalid="error ? 'true' : 'false'"
+            :aria-describedby="error ? 'api-key-form-error' : undefined"
         /></label>
         <label
           >Token 总额度<input
@@ -62,6 +73,8 @@ const { form, error, submit } = useApiKeyCreateDialog(props, (event, payload) =>
             max="10000000000"
             step="1"
             required
+            :aria-invalid="error ? 'true' : 'false'"
+            :aria-describedby="error ? 'api-key-form-error' : undefined"
           /><small>嵌入输入、生成输入和生成输出共用额度。</small></label
         >
         <label
@@ -69,13 +82,25 @@ const { form, error, submit } = useApiKeyCreateDialog(props, (event, payload) =>
             >留空表示不过期；公司可随时停用或删除。</small
           ></label
         >
-        <p v-if="error" class="api-key-field-error" role="alert">
+        <p
+          v-if="error"
+          id="api-key-form-error"
+          class="api-key-field-error"
+          role="alert"
+          aria-live="polite"
+        >
           {{ error }}
         </p>
         <footer class="api-key-dialog-actions">
           <button type="button" class="secondary-button" @click="emit('close')">取消</button
-          ><button type="submit" class="primary-button" :disabled="submitting">
-            {{ submitting ? '生成中…' : '生成并显示 Key' }}
+          ><button
+            type="submit"
+            class="primary-button"
+            :disabled="submitting"
+            :aria-busy="submitting ? 'true' : 'false'"
+          >
+            <span v-if="submitting" role="status" aria-live="polite">生成中…</span>
+            <template v-else>生成并显示 Key</template>
           </button>
         </footer>
       </form>

@@ -11,6 +11,7 @@ const {
   knowledgeBaseId,
   stateFilter,
   loading,
+  errorMessage,
   busyTaskId,
   stateLabel,
   taskLabel,
@@ -99,6 +100,15 @@ const taskColumns: AppTableColumn<Record<string, unknown>>[] = [
     <div v-if="loading" class="content-card module-placeholder min-h-[280px]">
       <span class="loading-spinner" />
       <p>正在加载任务…</p>
+    </div>
+    <div
+      v-else-if="errorMessage"
+      class="task-error content-card flex min-h-[180px] flex-col items-center justify-center gap-[10px] text-center"
+      role="alert"
+    >
+      <strong class="text-sm text-destructive">任务加载失败</strong>
+      <p class="text-xs text-muted-foreground">{{ errorMessage }}</p>
+      <button class="secondary-button" type="button" @click="loadData">重新加载</button>
     </div>
     <div v-else class="content-card table-card overflow-x-auto p-0">
       <AppTable

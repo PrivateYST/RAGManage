@@ -1,3 +1,7 @@
+<!--
+  添加成员弹窗：负责收集登录名和空间角色，并把提交中的状态传播给键盘与辅助技术用户。
+  成员写入和权限校验仍由父级业务流程及后端完成，本组件只维护输入与提交意图。
+-->
 <script setup lang="ts">
 import type { AddMemberDialogEmits, AddMemberDialogProps } from './type'
 import { AppDialog, X } from '@/components'
@@ -19,6 +23,7 @@ const { login, roleCode, submitting, close, submit } = useAddMemberDialog(emit)
     <form
       class="dialog-card member-add-dialog"
       aria-labelledby="add-member-title"
+      :aria-busy="submitting ? 'true' : 'false'"
       @submit.prevent="submit"
     >
       <div class="dialog-heading">
@@ -66,8 +71,14 @@ const { login, roleCode, submitting, close, submit } = useAddMemberDialog(emit)
         <button class="secondary-button" type="button" :disabled="submitting" @click="close">
           取消
         </button>
-        <button class="primary-button" type="submit" :disabled="submitting || !login.trim()">
-          {{ submitting ? '添加中…' : '确认添加' }}
+        <button
+          class="primary-button"
+          type="submit"
+          :disabled="submitting || !login.trim()"
+          :aria-busy="submitting ? 'true' : 'false'"
+        >
+          <span v-if="submitting" role="status" aria-live="polite">添加中…</span>
+          <template v-else>确认添加</template>
         </button>
       </div>
     </form>

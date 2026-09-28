@@ -16,6 +16,7 @@ describe('app confirm dialog', () => {
     await wrapper.vm.$nextTick()
 
     const dialog = document.body.querySelector('[role="alertdialog"]')
+    expect(dialog?.getAttribute('aria-busy')).toBe('false')
     expect(dialog).not.toBeNull()
     expect(dialog?.textContent).toContain('删除项目')
 
@@ -42,6 +43,8 @@ describe('app confirm dialog', () => {
     await wrapper.vm.$nextTick()
 
     const dialog = document.body.querySelector('[role="alertdialog"]')
+    expect(dialog?.getAttribute('aria-busy')).toBe('true')
+    expect(dialog?.querySelector('[role="status"]')?.textContent).toContain('处理中')
     const buttons = Array.from(dialog?.querySelectorAll('button') ?? [])
     buttons[0]?.click()
     buttons.at(-1)?.click()

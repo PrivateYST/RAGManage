@@ -156,8 +156,9 @@ class FakeUsageConnection:
 
     async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
         """返回最近一条流水并验证服务端固定限制。"""
-        assert "LIMIT 200" in query
         assert args == (9,)
+        if "LIMIT 200" not in query:
+            return []
         return [
             {
                 "request_id": "11111111-1111-4111-8111-111111111111",
@@ -676,9 +677,7 @@ def test_bearer_key_cannot_call_admin_model_configuration(monkeypatch: Any) -> N
 
 def test_explicit_bearer_key_takes_precedence_over_admin_cookie(monkeypatch: Any) -> None:
     """显式 Bearer 必须决定调用身份，不能被浏览器管理员 Cookie 绕过 Key 限制。"""
-    cookie_loader = AsyncMock(
-        return_value={"user": {"id": "1", "platform_role": "platform_admin"}}
-    )
+    cookie_loader = AsyncMock(return_value={"user": {"id": "1", "platform_role": "platform_admin"}})
     key_loader = AsyncMock(
         return_value={
             "user": {"id": "7", "platform_role": None},

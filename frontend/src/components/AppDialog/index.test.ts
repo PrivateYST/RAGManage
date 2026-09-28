@@ -33,5 +33,4 @@ describe('app dialog', () => {
     expect(overlay).toBeTruthy()
     wrapper.unmount()
   })
-
 })

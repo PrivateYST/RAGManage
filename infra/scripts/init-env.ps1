@@ -5,6 +5,9 @@ if (Test-Path -LiteralPath $envFile) { throw '.env already exists; leaving it un
 $passwordBytes = [byte[]]::new(32)
 [System.Security.Cryptography.RandomNumberGenerator]::Fill($passwordBytes)
 $databasePassword = [Convert]::ToHexString($passwordBytes).ToLowerInvariant()
+$csrfSecretBytes = [byte[]]::new(32)
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($csrfSecretBytes)
+$csrfSecret = [Convert]::ToHexString($csrfSecretBytes).ToLowerInvariant()
 @"
 POSTGRES_PASSWORD=$databasePassword
 DATABASE_URL=postgresql://ragmanage:$databasePassword@127.0.0.1:15432/ragmanage_dev
@@ -13,6 +16,7 @@ STORAGE_ROOT=$($projectRoot.Replace('\', '/'))/data/files
 MODEL_GATEWAY_BASE_URL=http://172.2.2.230:8080
 MODEL_GATEWAY_API_KEY=
 API_KEY_ENCRYPTION_SECRET=
+CSRF_SECRET=$csrfSecret
 MODEL_GATEWAY_ALLOWED_MODELS=qwen3-embedding:0.6b,qwen3.8:27b
 GENERATION_MODEL=qwen3.8:27b
 GENERATION_MAX_TOKENS=1024

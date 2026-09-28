@@ -52,10 +52,22 @@ const { form, error, submit } = useEndpointForm(props, (event, payload) => emit(
             placeholder="http://gateway.internal:8080"
         /></label>
         <label
-          >模型白名单<textarea v-model="form.modelsText" required placeholder="每行一个模型名称" />
+          >模型白名单<textarea
+            v-model="form.modelsText"
+            required
+            placeholder="每行一个模型名称"
+            :aria-invalid="error ? 'true' : 'false'"
+            :aria-describedby="error ? 'endpoint-form-error' : undefined"
+          />
         </label>
         <label>密钥引用<input value="env:MODEL_GATEWAY_API_KEY" disabled /></label>
-        <p v-if="error" class="field-error">
+        <p
+          v-if="error"
+          id="endpoint-form-error"
+          class="field-error"
+          role="alert"
+          aria-live="polite"
+        >
           {{ error }}
         </p>
         <footer class="dialog-actions">

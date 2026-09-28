@@ -18,6 +18,7 @@ import {
   KeyRound,
   LayoutDashboard,
   Library,
+  ListChecks,
   ListTodo,
   LogOut,
   Menu,
@@ -34,6 +35,7 @@ import {
 } from '@/components'
 import { useAppToast } from '@/composables/useToast'
 import { useAuthStore } from '@/store/auth'
+import SessionManagementDialog from './components/SessionManagementDialog/index.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -43,6 +45,7 @@ const collapsed = shallowRef(false)
 const mobileSidebarOpen = shallowRef(false)
 const profileOpen = shallowRef(false)
 const passwordOpen = shallowRef(false)
+const sessionsOpen = shallowRef(false)
 const passwordBusy = shallowRef(false)
 const passwordError = shallowRef('')
 const currentPassword = shallowRef('')
@@ -123,6 +126,19 @@ function openPasswordDialog(): void {
   newPassword.value = ''
   confirmPassword.value = ''
   passwordOpen.value = true
+}
+
+/** 会话管理由独立弹窗承载，打开时从服务端重新读取本账号有效 Session。 */
+function openSessionsDialog(): void {
+  profileOpen.value = false
+  sessionsOpen.value = true
+}
+
+/** 服务端撤销当前 Session 后清理本地身份，避免页面继续呈现已失效权限。 */
+async function handleCurrentSessionRevoked(): Promise<void> {
+  sessionsOpen.value = false
+  await auth.signOut()
+  await router.push('/login')
 }
 
 function closePasswordDialog(): void {
@@ -370,6 +386,13 @@ async function signOut(): Promise<void> {
                 <button
                   class="flex min-h-[33px] w-full items-center gap-[8px] rounded-md border-0 bg-transparent px-[8px] text-left text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   role="menuitem"
+                  @click="openSessionsDialog"
+                >
+                  <ListChecks :size="15" aria-hidden="true" />登录会话
+                </button>
+                <button
+                  class="flex min-h-[33px] w-full items-center gap-[8px] rounded-md border-0 bg-transparent px-[8px] text-left text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  role="menuitem"
                   @click="openPasswordDialog"
                 >
                   <KeyRound :size="15" aria-hidden="true" />修改密码
@@ -451,4 +474,9 @@ async function signOut(): Promise<void> {
       </form>
     </section>
   </AppDialog>
+  <SessionManagementDialog
+    :open="sessionsOpen"
+    @close="sessionsOpen = false"
+    @current-session-revoked="handleCurrentSessionRevoked"
+  />
 </template>

@@ -36,6 +36,12 @@ export function useBuildsPage() {
   const releaseBuildDetail = shallowRef<BuildDetailResponse | null>(null)
   const loadingReleaseDetail = shallowRef(false)
   const releaseDetailError = shallowRef('')
+  // 构建详情状态独立于 Release 详情，允许用户检查尚未发布或失败构建的逐文档结果。
+  const buildDetailOpen = shallowRef(false)
+  const selectedBuild = shallowRef<BuildRow | null>(null)
+  const buildDetail = shallowRef<BuildDetailResponse | null>(null)
+  const loadingBuildDetail = shallowRef(false)
+  const buildDetailError = shallowRef('')
   const rollbackDialogOpen = shallowRef(false)
   const rollbackTarget = shallowRef<ReleaseRow | null>(null)
   const rollingBack = shallowRef(false)
@@ -229,6 +235,30 @@ export function useBuildsPage() {
     releaseDetailOpen.value = false
   }
 
+  /**
+   * 打开指定构建的逐文档详情。
+   * 详情请求失败时保留弹窗和错误状态，避免用户失去当前选中的构建上下文。
+   */
+  async function openBuildDetail(build: BuildRow): Promise<void> {
+    selectedBuild.value = build
+    buildDetail.value = null
+    buildDetailError.value = ''
+    buildDetailOpen.value = true
+    loadingBuildDetail.value = true
+    try {
+      buildDetail.value = await fetchBuildDetail(build.id)
+    } catch (cause) {
+      buildDetailError.value = cause instanceof Error ? cause.message : '构建详情加载失败'
+      toast.error(buildDetailError.value)
+    } finally {
+      loadingBuildDetail.value = false
+    }
+  }
+
+  function closeBuildDetail(): void {
+    buildDetailOpen.value = false
+  }
+
   function openRollbackDialog(release: ReleaseRow): void {
     if (!release.rollback_available || !currentRelease.value) return
     rollbackTarget.value = release
@@ -316,6 +346,11 @@ export function useBuildsPage() {
     releaseBuildDetail,
     loadingReleaseDetail,
     releaseDetailError,
+    buildDetailOpen,
+    selectedBuild,
+    buildDetail,
+    loadingBuildDetail,
+    buildDetailError,
     rollbackDialogOpen,
     rollbackTarget,
     rollingBack,
@@ -339,6 +374,8 @@ export function useBuildsPage() {
     handlePublishRelease,
     openReleaseDetail,
     closeReleaseDetail,
+    openBuildDetail,
+    closeBuildDetail,
     openRollbackDialog,
     closeRollbackDialog,
     handleRollbackRelease,

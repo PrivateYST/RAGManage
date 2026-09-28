@@ -1,3 +1,5 @@
+"""集中声明 API、会话、存储和外部模型服务所需的运行时配置。"""
+
 import hashlib
 from pathlib import Path
 
@@ -23,6 +25,8 @@ class Settings(BaseSettings):
     open_webui_provisioning_enabled: bool = False
     # 用于加密保存公司 API Key；生产环境应显式配置，空值时由数据库连接和管理员密码派生。
     api_key_encryption_secret: SecretStr = SecretStr("")
+    # CSRF HMAC 使用独立稳定密钥；空值时从既有稳定密钥派生以兼容升级。
+    csrf_secret: SecretStr = SecretStr("")
     model_gateway_allowed_models: str = "qwen3-embedding:0.6b,qwen3.8:27b"
     generation_model: str = "qwen3.8:27b"
     # API Key 额度预扣的最大生成预算；真实结算仍以网关 usage 为准。
@@ -52,4 +56,14 @@ class Settings(BaseSettings):
             return configured
         return hashlib.sha256(
             f"RAGManage/api-key/{self.database_url}/{self.bootstrap_admin_password}".encode()
+        ).hexdigest()
+
+    @property
+    def csrf_secret_value(self) -> str:
+        """返回跨 API Worker 稳定的 CSRF 密钥，避免重启令所有浏览器请求失效。"""
+        configured = self.csrf_secret.get_secret_value().strip()
+        if configured:
+            return configured
+        return hashlib.sha256(
+            f"RAGManage/csrf/{self.api_key_encryption_secret_value}".encode()
         ).hexdigest()

@@ -1,6 +1,13 @@
 <!-- 平台管理工作区：负责数据表格、创建表单与用户停用确认的页面编排。 -->
 <script setup lang="ts">
-import type { KnowledgeBaseRow, MenuRow, TenantRow, UserRow } from '@/api/admin'
+import type {
+  KnowledgeBaseRow,
+  MenuRow,
+  RoleRow,
+  TenantRow,
+  UserDetail,
+  UserRow,
+} from '@/api/admin'
 import type { CreatedApiKey } from '@/api/apiKeys'
 import type { AppTableColumn } from '@/components'
 import type { ApiKeyCreatePayload } from '@/views/models/components/ApiKeyCreateDialog/type'
@@ -8,13 +15,17 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   createKnowledgeBase,
+  createMenu,
   createTenant,
   createUser,
   fetchKnowledgeBases,
   fetchMenus,
+  fetchRoles,
   fetchTenants,
+  fetchUserDetail,
   fetchUsers,
   updateMenu,
+  updateRoleMenus,
   updateUser,
 } from '@/api/admin'
 import { createApiKey, fetchApiKeyPlaintext } from '@/api/apiKeys'
@@ -42,8 +53,11 @@ const route = useRoute()
 const auth = useAuthStore()
 const toast = useAppToast()
 const loading = ref(false)
+// 管理数据加载失败时保留页面级错误，避免只依赖短暂 Toast 导致用户误判为空数据。
+const loadError = ref('')
 const knowledgeBases = ref<KnowledgeBaseRow[]>([])
 const menus = ref<MenuRow[]>([])
+const roles = ref<RoleRow[]>([])
 const users = ref<UserRow[]>([])
 const tenants = ref<TenantRow[]>([])
 const showUserDialog = ref(false)
@@ -54,6 +68,28 @@ const savingTenant = ref(false)
 const savingKnowledgeBase = ref(false)
 const pendingUserStatus = ref<UserRow | null>(null)
 const updatingUserStatus = ref(false)
+const editingMenu = ref<MenuRow | null>(null)
+const menuForm = ref({
+  name: '',
+  parent_id: '',
+  sort_order: 0,
+  status: 'active' as 'active' | 'disabled',
+})
+const creatingMenu = ref(false)
+const menuCreateForm = ref({
+  code: '',
+  name: '',
+  kind: 'menu' as 'directory' | 'menu' | 'button',
+  parent_id: '',
+  route: '',
+  icon: '',
+  permission_code: '',
+  sort_order: 0,
+  visible: true,
+})
+const userDetail = ref<UserDetail | null>(null)
+const userDetailOpen = ref(false)
+const userDetailLoading = ref(false)
 const selectedTenantForKey = ref<TenantRow | null>(null)
 const tenantKeyDialogOpen = ref(false)
 const tenantKeySubmitting = ref(false)
@@ -106,6 +142,12 @@ const menuColumns: AppTableColumn<MenuRow>[] = [
   { key: 'permission', title: '权限标识' },
   { key: 'route', title: '路由', field: 'route' },
   { key: 'visible', title: '显示' },
+  { key: 'actions', title: '操作' },
+]
+const roleColumns: AppTableColumn<RoleRow>[] = [
+  { key: 'name', title: '角色' },
+  { key: 'scope', title: '作用域', field: 'scope' },
+  { key: 'permissions', title: '权限数' },
   { key: 'actions', title: '操作' },
 ]
 const userColumns: AppTableColumn<UserRow>[] = [
@@ -208,6 +250,7 @@ const current = computed(
 
 async function loadData(): Promise<void> {
   loading.value = true
+  loadError.value = ''
   try {
     if (route.path === '/knowledge-bases') {
       knowledgeBases.value = auth.activeSpaceId
@@ -215,13 +258,33 @@ async function loadData(): Promise<void> {
         : []
     }
     if (route.path === '/system/menus') menus.value = (await fetchMenus()).items
+    if (route.path === '/system/roles') roles.value = (await fetchRoles()).items
     if (route.path === '/system/users') users.value = (await fetchUsers()).items
     if (route.path === '/system/spaces' || route.path === '/system/users')
       tenants.value = (await fetchTenants()).items
   } catch (cause) {
-    toast.error(cause instanceof Error ? cause.message : '数据加载失败')
+    loadError.value = cause instanceof Error ? cause.message : '数据加载失败'
+    toast.error(loadError.value)
   } finally {
     loading.value = false
+  }
+}
+
+/** 编辑非系统角色时默认授予当前菜单集合，系统角色由迁移固定保护。 */
+async function editRole(role: RoleRow): Promise<void> {
+  if (role.is_system) {
+    toast.error('系统角色权限由平台初始化维护，不能直接修改')
+    return
+  }
+  try {
+    await updateRoleMenus(
+      role.id,
+      menus.value.map((menu) => menu.id),
+    )
+    toast.success('角色权限已更新')
+    await loadData()
+  } catch (cause) {
+    toast.error(cause instanceof Error ? cause.message : '角色权限更新失败')
   }
 }
 
@@ -232,6 +295,72 @@ async function toggleMenu(menu: MenuRow): Promise<void> {
     await loadData()
   } catch (cause) {
     toast.error(cause instanceof Error ? cause.message : '菜单状态更新失败')
+  }
+}
+
+/** 打开菜单元数据编辑器；权限标识和路由保持只读，避免破坏已注册的前端白名单。 */
+function openMenuEditor(menu: MenuRow): void {
+  editingMenu.value = menu
+  menuForm.value = {
+    name: menu.name,
+    parent_id: menu.parent_id ?? '',
+    sort_order: menu.sort_order,
+    status: menu.status as 'active' | 'disabled',
+  }
+}
+
+function openMenuCreator(): void {
+  menuCreateForm.value = {
+    code: '',
+    name: '',
+    kind: 'menu',
+    parent_id: '',
+    route: '',
+    icon: '',
+    permission_code: '',
+    sort_order: 0,
+    visible: true,
+  }
+  creatingMenu.value = true
+}
+
+async function saveNewMenu(): Promise<void> {
+  try {
+    await createMenu({
+      code: menuCreateForm.value.code,
+      name: menuCreateForm.value.name,
+      kind: menuCreateForm.value.kind,
+      ...(menuCreateForm.value.parent_id
+        ? { parent_id: Number(menuCreateForm.value.parent_id) }
+        : {}),
+      ...(menuCreateForm.value.route ? { route: menuCreateForm.value.route } : {}),
+      ...(menuCreateForm.value.icon ? { icon: menuCreateForm.value.icon } : {}),
+      permission_code: menuCreateForm.value.permission_code,
+      sort_order: menuCreateForm.value.sort_order,
+      visible: menuCreateForm.value.visible,
+    })
+    creatingMenu.value = false
+    toast.success('菜单已创建')
+    await loadData()
+  } catch (cause) {
+    toast.error(cause instanceof Error ? cause.message : '菜单创建失败')
+  }
+}
+
+async function saveMenu(): Promise<void> {
+  if (!editingMenu.value) return
+  try {
+    await updateMenu(editingMenu.value.id, {
+      name: menuForm.value.name,
+      parent_id: menuForm.value.parent_id ? Number(menuForm.value.parent_id) : null,
+      sort_order: menuForm.value.sort_order,
+      status: menuForm.value.status,
+    })
+    toast.success('菜单配置已更新')
+    editingMenu.value = null
+    await loadData()
+  } catch (cause) {
+    toast.error(cause instanceof Error ? cause.message : '菜单配置更新失败')
   }
 }
 
@@ -281,6 +410,21 @@ async function toggleUser(user: UserRow): Promise<void> {
     return
   }
   await updateUserStatus(user)
+}
+
+/** 打开用户详情并读取当前空间授权与变更历史，失败时保持列表可用。 */
+async function openUserDetail(user: UserRow): Promise<void> {
+  userDetailOpen.value = true
+  userDetailLoading.value = true
+  userDetail.value = null
+  try {
+    userDetail.value = await fetchUserDetail(user.id)
+  } catch (cause) {
+    toast.error(cause instanceof Error ? cause.message : '用户详情加载失败')
+    userDetailOpen.value = false
+  } finally {
+    userDetailLoading.value = false
+  }
 }
 
 /** 执行已确认的平台用户状态变更并刷新列表。 */
@@ -364,6 +508,7 @@ function handlePrimaryAction(): void {
     showKnowledgeBaseDialog.value = true
   }
   if (route.path === '/system/users') openUserDialog()
+  if (route.path === '/system/menus') openMenuCreator()
   if (route.path === '/system/spaces') {
     tenantForm.value = { code: '', name: '' }
     showTenantDialog.value = true
@@ -426,9 +571,22 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
       <span class="loading-spinner" />
       <p>正在加载数据…</p>
     </div>
+    <div
+      v-else-if="loadError"
+      class="content-card flex min-h-[180px] flex-col items-center justify-center gap-[10px]"
+      role="alert"
+    >
+      <strong class="text-sm text-destructive">管理数据加载失败</strong>
+      <p class="text-xs text-muted-foreground">{{ loadError }}</p>
+      <button class="secondary-button" type="button" @click="loadData">重新加载</button>
+    </div>
     <div v-else-if="route.path === '/knowledge-bases'" class="content-card table-card">
       <div class="table-toolbar">
-        <div class="search-box"><Search :size="16" /><input placeholder="搜索知识库" /></div>
+        <label class="search-box">
+          <Search :size="16" aria-hidden="true" />
+          <span class="sr-only">搜索知识库</span>
+          <input aria-label="搜索知识库" placeholder="搜索知识库" />
+        </label>
         <span class="table-count">共 {{ knowledgeBases.length }} 个知识库</span>
       </div>
       <AppTable :rows="knowledgeBases" :columns="knowledgeBaseColumns" row-key="id">
@@ -466,16 +624,13 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
         >
         <template #cell-apiKey="{ row }">
           <div class="flex min-w-[170px] flex-col gap-[3px]">
-            <span
-              class="status-pill w-fit"
-              :class="tenantKeyStatusClass(row.api_key_status)"
-            >
+            <span class="status-pill w-fit" :class="tenantKeyStatusClass(row.api_key_status)">
               {{ tenantKeyStatusLabel(row.api_key_status) }}
             </span>
             <code v-if="row.api_key_prefix">{{ row.api_key_prefix }}</code>
             <small v-if="row.api_key_id">
-              已用 {{ (row.api_key_token_used ?? 0).toLocaleString() }} /
-              剩余 {{ (row.api_key_token_remaining ?? 0).toLocaleString() }} Token
+              已用 {{ (row.api_key_token_used ?? 0).toLocaleString() }} / 剩余
+              {{ (row.api_key_token_remaining ?? 0).toLocaleString() }} Token
             </small>
           </div>
         </template>
@@ -521,10 +676,25 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
           }}</span></template
         >
         <template #cell-actions="{ row }"
-          ><button class="table-action" @click="toggleMenu(row)">
+          ><button class="table-action" @click="openMenuEditor(row)">编辑</button>
+          <button class="table-action" @click="toggleMenu(row)">
             {{ row.visible ? '隐藏' : '显示' }}
           </button></template
         >
+      </AppTable>
+    </div>
+    <div v-else-if="route.path === '/system/roles'" class="content-card table-card">
+      <AppTable :rows="roles" :columns="roleColumns" row-key="id">
+        <template #cell-name="{ row }"
+          ><strong>{{ row.name }}</strong
+          ><small>{{ row.code }}</small></template
+        >
+        <template #cell-permissions="{ row }">{{ row.menu_ids.length }} 项</template>
+        <template #cell-actions="{ row }">
+          <button class="table-action" :disabled="row.is_system" @click="editRole(row)">
+            {{ row.is_system ? '系统角色' : '同步当前菜单权限' }}
+          </button>
+        </template>
       </AppTable>
     </div>
     <div v-else-if="route.path === '/system/users'" class="content-card table-card">
@@ -543,7 +713,8 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
           row.last_login_at ? new Date(row.last_login_at).toLocaleString('zh-CN') : '尚未登录'
         }}</template>
         <template #cell-actions="{ row }"
-          ><button class="table-action" @click="toggleUser(row)">
+          ><button class="table-action" @click="openUserDetail(row)">详情</button>
+          <button class="table-action" @click="toggleUser(row)">
             {{ row.status === 'active' ? '停用' : '启用' }}
           </button></template
         >
@@ -604,6 +775,109 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
         ><button class="primary-button" :disabled="savingUser">
           {{ savingUser ? '保存中…' : '创建用户' }}
         </button>
+      </div>
+    </form>
+  </AppDialog>
+  <AppDialog
+    :open="Boolean(editingMenu)"
+    title="编辑菜单"
+    content-class="w-[min(440px,calc(100vw-2rem))]"
+    @close="editingMenu = null"
+  >
+    <form class="dialog-card" @submit.prevent="saveMenu">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">系统管理</p>
+          <h2>编辑菜单</h2>
+        </div>
+        <button type="button" class="dialog-close" @click="editingMenu = null">关闭</button>
+      </div>
+      <label>菜单名称<input v-model.trim="menuForm.name" required maxlength="80" /></label>
+      <label
+        >父级菜单<select v-model="menuForm.parent_id">
+          <option value="">顶级菜单</option>
+          <option
+            v-for="menu in menus"
+            :key="menu.id"
+            :value="menu.id"
+            :disabled="menu.id === editingMenu?.id"
+          >
+            {{ menu.name }}
+          </option>
+        </select></label
+      >
+      <label
+        >排序<input v-model.number="menuForm.sort_order" type="number" min="0" max="9999" required
+      /></label>
+      <label
+        >状态<select v-model="menuForm.status">
+          <option value="active">启用</option>
+          <option value="disabled">停用</option>
+        </select></label
+      >
+      <p class="text-xs text-muted-foreground">
+        路由和权限标识由系统维护，编辑后会立即影响菜单展示。
+      </p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary-button" @click="editingMenu = null">取消</button>
+        <button class="primary-button">保存菜单</button>
+      </div>
+    </form>
+  </AppDialog>
+  <AppDialog
+    :open="creatingMenu"
+    title="新增菜单"
+    content-class="w-[min(520px,calc(100vw-2rem))]"
+    @close="creatingMenu = false"
+  >
+    <form class="dialog-card" @submit.prevent="saveNewMenu">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">系统管理</p>
+          <h2>新增菜单</h2>
+        </div>
+        <button type="button" class="dialog-close" @click="creatingMenu = false">关闭</button>
+      </div>
+      <div class="grid gap-[12px] sm:grid-cols-2">
+        <label
+          >编码<input v-model.trim="menuCreateForm.code" required pattern="[a-z0-9][a-z0-9_-]+"
+        /></label>
+        <label>名称<input v-model.trim="menuCreateForm.name" required maxlength="80" /></label>
+        <label
+          >类型<select v-model="menuCreateForm.kind">
+            <option value="directory">目录</option>
+            <option value="menu">页面</option>
+            <option value="button">按钮</option>
+          </select></label
+        >
+        <label
+          >父级菜单<select v-model="menuCreateForm.parent_id">
+            <option value="">顶级菜单</option>
+            <option v-for="menu in menus" :key="menu.id" :value="menu.id">{{ menu.name }}</option>
+          </select></label
+        >
+        <label
+          >路由<input v-model.trim="menuCreateForm.route" placeholder="/system/example"
+        /></label>
+        <label>图标<input v-model.trim="menuCreateForm.icon" placeholder="Activity" /></label>
+        <label
+          >权限标识<input
+            v-model.trim="menuCreateForm.permission_code"
+            required
+            placeholder="example:view"
+        /></label>
+        <label
+          >排序<input
+            v-model.number="menuCreateForm.sort_order"
+            type="number"
+            min="0"
+            max="9999"
+            required
+        /></label>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="secondary-button" @click="creatingMenu = false">取消</button
+        ><button class="primary-button">创建菜单</button>
       </div>
     </form>
   </AppDialog>
@@ -703,6 +977,55 @@ watch([() => route.path, () => auth.activeSpaceId], loadData, { immediate: true 
     @close="closeTenantKeyReveal"
     @copied="toast.success('客户 API Key 已复制')"
   />
+  <AppDialog
+    :open="userDetailOpen"
+    :title="userDetail ? `${userDetail.user.display_name} · 用户详情` : '用户详情'"
+    content-class="w-[min(720px,calc(100vw-2rem))]"
+    @close="userDetailOpen = false"
+  >
+    <div v-if="userDetailLoading" class="module-placeholder min-h-[180px]" role="status">
+      <span class="loading-spinner" />
+      <p>正在读取授权历史…</p>
+    </div>
+    <div v-else-if="userDetail" class="grid gap-[20px]">
+      <section>
+        <p class="eyebrow">账号资料</p>
+        <p class="text-sm">
+          {{ userDetail.user.login }} · {{ userDetail.user.status === 'active' ? '正常' : '停用' }}
+        </p>
+      </section>
+      <section>
+        <p class="eyebrow">当前空间授权</p>
+        <div v-if="userDetail.memberships.length" class="grid gap-[8px]">
+          <div
+            v-for="membership in userDetail.memberships"
+            :key="`${membership.tenant_id}-${membership.role_code}`"
+            class="rounded-md border border-border px-[12px] py-[8px] text-sm"
+          >
+            {{ membership.tenant_name }}（{{ membership.tenant_code }}） ·
+            {{ membership.role_code }} · {{ membership.status }}
+          </div>
+        </div>
+        <p v-else class="text-sm text-muted-foreground">暂无空间授权</p>
+      </section>
+      <section>
+        <p class="eyebrow">授权历史</p>
+        <div v-if="userDetail.history.length" class="grid gap-[8px]">
+          <div
+            v-for="event in userDetail.history"
+            :key="event.id"
+            class="rounded-md border border-border px-[12px] py-[8px] text-sm"
+          >
+            <strong>{{ event.action }}</strong
+            ><span class="ml-[8px] text-muted-foreground">{{
+              new Date(event.created_at).toLocaleString('zh-CN')
+            }}</span>
+          </div>
+        </div>
+        <p v-else class="text-sm text-muted-foreground">暂无授权变更记录</p>
+      </section>
+    </div>
+  </AppDialog>
   <AppConfirmDialog
     :open="Boolean(pendingUserStatus)"
     :title="pendingUserStatus ? `确认停用“${pendingUserStatus.display_name}”？` : '确认停用用户'"

@@ -49,11 +49,15 @@ describe('app table', () => {
     expect(wrapper.emitted('pageChange')?.[0]).toEqual([{ page: 2, pageSize: 10, total: 25 }])
   })
 
-  it('renders loading and empty states', () => {
+  it('renders loading and empty states with accessible status semantics', () => {
     const loading = mount(AppTable<UserRow>, { props: { rows: [], columns, loading: true } })
     expect(loading.text()).toContain('正在加载')
+    expect(loading.find('.app-table').attributes('aria-busy')).toBe('true')
+    expect(loading.find('[role="status"]').attributes('aria-live')).toBe('polite')
 
     const empty = mount(AppTable<UserRow>, { props: { rows: [], columns, emptyText: '没有结果' } })
     expect(empty.text()).toContain('没有结果')
+    expect(empty.find('.app-table').attributes('aria-busy')).toBe('false')
+    expect(empty.find('[role="status"]').attributes('aria-live')).toBe('polite')
   })
 })

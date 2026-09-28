@@ -2,11 +2,16 @@
 <script setup lang="ts">
 import type { ApiKeyUsagePanelProps } from './type'
 import type { AppTableColumn } from '@/components'
+import { computed } from 'vue'
 import { AppTable } from '@/components'
 import { useApiKeyUsagePanel } from './index'
 
-defineProps<ApiKeyUsagePanelProps>()
+const props = defineProps<ApiKeyUsagePanelProps>()
 const { sourceLabel } = useApiKeyUsagePanel()
+const daily = computed(() => props.daily ?? [])
+const monthly = computed(() => props.monthly ?? [])
+const dailyTotal = computed(() => daily.value.reduce((sum, item) => sum + item.total_tokens, 0))
+const monthlyTotal = computed(() => monthly.value.reduce((sum, item) => sum + item.total_tokens, 0))
 const columns: AppTableColumn<import('@/api/apiKeys').ApiKeyUsageRow>[] = [
   { key: 'time', title: '时间' },
   { key: 'models', title: '模型分项' },
@@ -52,6 +57,22 @@ const columns: AppTableColumn<import('@/api/apiKeys').ApiKeyUsageRow>[] = [
         <strong class="mt-[4px] block text-lg">{{
           (summary?.total_tokens ?? 0).toLocaleString()
         }}</strong>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 border-b border-border max-sm:grid-cols-1">
+      <div class="border-r border-border px-[16px] py-[12px] max-sm:border-r-0 max-sm:border-b">
+        <small class="block text-[10px] text-muted-foreground">近 30 天</small>
+        <strong class="mt-[4px] block text-sm">{{ dailyTotal.toLocaleString() }} Token</strong>
+        <small class="mt-[2px] block text-[10px] text-muted-foreground"
+          >{{ daily.length }} 个自然日</small
+        >
+      </div>
+      <div class="px-[16px] py-[12px]">
+        <small class="block text-[10px] text-muted-foreground">近 12 个月</small>
+        <strong class="mt-[4px] block text-sm">{{ monthlyTotal.toLocaleString() }} Token</strong>
+        <small class="mt-[2px] block text-[10px] text-muted-foreground"
+          >{{ monthly.length }} 个月</small
+        >
       </div>
     </div>
     <div class="overflow-x-auto">

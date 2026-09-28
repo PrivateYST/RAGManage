@@ -137,7 +137,16 @@ function handlePageSizeChange(event: Event): void {
 </script>
 
 <template>
-  <section v-bind="$attrs" class="app-table" :class="{ 'app-table--loading': loading }">
+  <!--
+    表格状态是所有管理页共用的异步反馈边界：aria-busy 让辅助技术知道内容仍在更新，
+    状态单元格使用 live region，避免只依赖视觉上的“正在加载…”文案。
+  -->
+  <section
+    v-bind="$attrs"
+    class="app-table"
+    :class="{ 'app-table--loading': loading }"
+    :aria-busy="loading ? 'true' : 'false'"
+  >
     <div class="app-table__scroll">
       <Table :class="tableClass">
         <!-- 列组和 data-label 同时提供桌面列宽与窄屏可读性，避免业务表格各自重复对齐逻辑。 -->
@@ -166,11 +175,16 @@ function handlePageSizeChange(event: Event): void {
           </TableRow>
         </TableHeader>
         <TableBody v-if="loading">
-          <TableRow
-            ><TableCell class="app-table__state" :colspan="Math.max(columns.length, 1)">{{
-              loadingText
-            }}</TableCell></TableRow
-          >
+          <TableRow>
+            <TableCell
+              class="app-table__state"
+              :colspan="Math.max(columns.length, 1)"
+              role="status"
+              aria-live="polite"
+            >
+              {{ loadingText }}
+            </TableCell>
+          </TableRow>
         </TableBody>
         <TableBody v-else-if="table.getRowModel().rows.length">
           <TableRow v-for="row in table.getRowModel().rows" :key="row.id">
@@ -193,11 +207,16 @@ function handlePageSizeChange(event: Event): void {
           </TableRow>
         </TableBody>
         <TableBody v-else>
-          <TableRow
-            ><TableCell class="app-table__state" :colspan="Math.max(columns.length, 1)"
-              ><slot name="empty">{{ emptyText }}</slot></TableCell
-            ></TableRow
-          >
+          <TableRow>
+            <TableCell
+              class="app-table__state"
+              :colspan="Math.max(columns.length, 1)"
+              role="status"
+              aria-live="polite"
+            >
+              <slot name="empty">{{ emptyText }}</slot>
+            </TableCell>
+          </TableRow>
         </TableBody>
       </Table>
     </div>

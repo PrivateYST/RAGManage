@@ -15,9 +15,7 @@ def upgrade() -> None:
         """COMMENT ON COLUMN api_keys.deleted_at IS
         '管理员删除时间；软删除保留用量、审计和外键历史，且立即禁止鉴权'"""
     )
-    op.execute(
-        """ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_status_check"""
-    )
+    op.execute("""ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_status_check""")
     op.execute(
         """ALTER TABLE api_keys ADD CONSTRAINT api_keys_status_check
         CHECK (status IN ('active', 'disabled', 'revoked', 'expired'))"""
@@ -27,9 +25,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     """回滚前把停用状态归入可兼容的 revoked 状态并移除软删除列。"""
     op.execute("UPDATE api_keys SET status = 'revoked' WHERE status = 'disabled'")
-    op.execute(
-        """ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_status_check"""
-    )
+    op.execute("""ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_status_check""")
     op.execute(
         """ALTER TABLE api_keys ADD CONSTRAINT api_keys_status_check
         CHECK (status IN ('active', 'revoked', 'expired'))"""

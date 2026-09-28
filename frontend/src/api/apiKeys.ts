@@ -63,9 +63,16 @@ export interface ApiKeyUsageSummary {
   total_tokens: number
 }
 
+/** 按自然日或自然月聚合的客户 Key 用量。 */
+export interface ApiKeyUsagePeriod extends ApiKeyUsageSummary {
+  period: string
+}
+
 /** 用量接口同时返回全量汇总和限定数量的最近流水。 */
 export interface ApiKeyUsageResponse {
   summary: ApiKeyUsageSummary
+  daily?: ApiKeyUsagePeriod[]
+  monthly?: ApiKeyUsagePeriod[]
   recent_limit: number
   items: ApiKeyUsageRow[]
 }

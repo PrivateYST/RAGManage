@@ -66,6 +66,7 @@ function handleOpenChange(value: boolean): void {
       <AlertDialogContent
         class="fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card p-[22px] text-foreground shadow-[0_18px_48px_rgb(24_24_27_/_16%)] focus:outline-none"
         :class="props.contentClass"
+        :aria-busy="busy ? 'true' : 'false'"
       >
         <AlertDialogHeader>
           <AlertDialogTitle class="text-base font-semibold leading-[24px]">
@@ -95,9 +96,11 @@ function handleOpenChange(value: boolean): void {
                 : 'bg-primary hover:bg-primary/90'
             "
             :disabled="busy"
+            :aria-busy="busy ? 'true' : 'false'"
             @click="confirm"
           >
-            {{ busy ? '处理中…' : confirmLabel }}
+            <span v-if="busy" role="status" aria-live="polite">处理中…</span>
+            <template v-else>{{ confirmLabel }}</template>
           </button>
         </AlertDialogFooter>
       </AlertDialogContent>

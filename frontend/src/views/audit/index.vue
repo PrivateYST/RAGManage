@@ -21,6 +21,7 @@ const {
   items,
   filters,
   loading,
+  errorMessage,
   loadingMore,
   nextCursor,
   selected,
@@ -151,6 +152,15 @@ const auditColumns: AppTableColumn<AuditLogItem>[] = [
         </button>
       </div>
     </form>
+
+    <div
+      v-if="errorMessage"
+      class="content-card mb-[12px] flex items-center justify-between gap-[12px]"
+      role="alert"
+    >
+      <span class="text-xs text-destructive">{{ errorMessage }}</span>
+      <button class="secondary-button" type="button" @click="load(true)">重新加载日志</button>
+    </div>
 
     <section class="content-card overflow-hidden p-0">
       <header

@@ -14,6 +14,8 @@ const {
   selected,
   usage,
   usageSummary,
+  usageDaily,
+  usageMonthly,
   usageRecentLimit,
   loading,
   usageLoading,
@@ -74,6 +76,8 @@ const {
       :api-key="selected"
       :items="usage"
       :summary="usageSummary"
+      :daily="usageDaily"
+      :monthly="usageMonthly"
       :recent-limit="usageRecentLimit"
       :loading="usageLoading"
     />

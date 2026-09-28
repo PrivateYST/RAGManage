@@ -22,6 +22,9 @@ export function useModelsPage() {
   const toast = useAppToast()
   const view = shallowRef<ModelPageView>('endpoints')
   const loading = shallowRef(false)
+  // 保留页面级请求错误，避免模型配置失败后用空列表掩盖权限或网络问题。
+  const loadError = shallowRef('')
+  const profilesError = shallowRef('')
   const busyId = shallowRef('')
   const endpointDialogOpen = shallowRef(false)
   const gatewayKeyDialogOpen = shallowRef(false)
@@ -38,6 +41,7 @@ export function useModelsPage() {
 
   async function loadPage(): Promise<void> {
     loading.value = true
+    loadError.value = ''
     try {
       const kbPromise = auth.activeSpaceId
         ? fetchKnowledgeBases(auth.activeSpaceId)
@@ -52,7 +56,8 @@ export function useModelsPage() {
         selectedKnowledgeBaseId.value = knowledgeBases.value[0]?.id ?? ''
       if (!canManageEndpoints.value) view.value = 'profiles'
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '模型配置加载失败')
+      loadError.value = cause instanceof Error ? cause.message : '模型配置加载失败'
+      toast.error(loadError.value)
     } finally {
       loading.value = false
     }
@@ -60,11 +65,13 @@ export function useModelsPage() {
 
   async function loadProfiles(): Promise<void> {
     profiles.value = null
+    profilesError.value = ''
     if (!selectedKnowledgeBaseId.value) return
     try {
       profiles.value = await fetchProfiles(selectedKnowledgeBaseId.value)
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : 'Profile 加载失败')
+      profilesError.value = cause instanceof Error ? cause.message : 'Profile 加载失败'
+      toast.error(profilesError.value)
     }
   }
 
@@ -260,6 +267,8 @@ export function useModelsPage() {
     auth,
     view,
     loading,
+    loadError,
+    profilesError,
     busyId,
     endpointDialogOpen,
     gatewayKeyDialogOpen,
@@ -273,6 +282,7 @@ export function useModelsPage() {
     lastHealthResult,
     canManageEndpoints,
     loadPage,
+    loadProfiles,
     openCreateEndpoint,
     openGatewayKeyDialog,
     handleGatewayKeySaved,

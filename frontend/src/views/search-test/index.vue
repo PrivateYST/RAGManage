@@ -13,6 +13,7 @@ const {
   contextMaxChars,
   loadingKnowledgeBases,
   searching,
+  errorMessage,
   canSearch,
   result,
   loadKnowledgeBases,
@@ -77,6 +78,17 @@ const {
       :can-search="canSearch"
       @submit="search"
     />
+
+    <div
+      v-if="errorMessage"
+      class="content-card my-[12px] flex items-center justify-between gap-[12px]"
+      role="alert"
+    >
+      <span class="text-xs text-destructive">{{ errorMessage }}</span>
+      <button class="secondary-button" type="button" @click="loadKnowledgeBases">
+        重新加载并清除错误
+      </button>
+    </div>
 
     <SearchResultList :result="result" :searching="searching" />
   </section>

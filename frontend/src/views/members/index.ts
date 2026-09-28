@@ -33,6 +33,9 @@ export function useMembersPage() {
   const view = shallowRef<MemberView>('space')
   const loading = shallowRef(false)
   const grantLoading = shallowRef(false)
+  // 分离空间基础数据和知识库授权错误，避免错误状态覆盖另一个视图的数据。
+  const loadError = shallowRef('')
+  const grantError = shallowRef('')
   const busyId = shallowRef('')
   const addDialogOpen = shallowRef(false)
   const spaceMembers = ref<SpaceMember[]>([])
@@ -56,6 +59,7 @@ export function useMembersPage() {
 
   async function loadPage(): Promise<void> {
     loading.value = true
+    loadError.value = ''
     knowledgeBaseMembers.value = []
     candidates.value = []
     const spaceId = auth.activeSpaceId
@@ -86,7 +90,8 @@ export function useMembersPage() {
         selectedKnowledgeBaseId.value = knowledgeBases.value[0]?.id ?? ''
       if (!canManageSpace.value) view.value = 'knowledge'
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '成员信息加载失败')
+      loadError.value = cause instanceof Error ? cause.message : '成员信息加载失败'
+      toast.error(loadError.value)
     } finally {
       loading.value = false
     }
@@ -95,6 +100,7 @@ export function useMembersPage() {
   async function loadKnowledgeBaseAccess(): Promise<void> {
     knowledgeBaseMembers.value = []
     candidates.value = []
+    grantError.value = ''
     if (!selectedKnowledgeBaseId.value) return
     grantLoading.value = true
     try {
@@ -105,7 +111,8 @@ export function useMembersPage() {
       knowledgeBaseMembers.value = membersResult.items
       candidates.value = candidatesResult.items
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '知识库授权加载失败')
+      grantError.value = cause instanceof Error ? cause.message : '知识库授权加载失败'
+      toast.error(grantError.value)
     } finally {
       grantLoading.value = false
     }
@@ -269,6 +276,8 @@ export function useMembersPage() {
     auth,
     view,
     loading,
+    loadError,
+    grantError,
     grantLoading,
     busyId,
     addDialogOpen,
@@ -282,6 +291,7 @@ export function useMembersPage() {
     canManageSpace,
     stats,
     loadPage,
+    loadKnowledgeBaseAccess,
     submitSpaceMember,
     changeSpaceRole,
     toggleSpaceStatus,

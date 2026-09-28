@@ -23,6 +23,8 @@ export function useDashboardPage() {
   const knowledgeBases = ref<KnowledgeBaseRow[]>([])
   const tasks = ref<TaskRow[]>([])
   const loading = shallowRef(true)
+  // 页面内保留请求失败原因，避免仅依赖 Toast 时用户无法判断概览数据是否可信。
+  const errorMessage = shallowRef<string | null>(null)
   const serviceReady = shallowRef<DashboardHealthState>(null)
 
   const currentKnowledgeBase = computed(() => knowledgeBases.value[0])
@@ -40,10 +42,12 @@ export function useDashboardPage() {
       knowledgeBases.value = []
       tasks.value = []
       serviceReady.value = null
+      errorMessage.value = null
       loading.value = false
       return
     }
     loading.value = true
+    errorMessage.value = null
     const controller = new AbortController()
     try {
       const [knowledgeBaseResponse, taskResponse, health] = await Promise.all([
@@ -55,7 +59,8 @@ export function useDashboardPage() {
       tasks.value = taskResponse.items
       serviceReady.value = health.status === 'ready'
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '工作台数据加载失败')
+      errorMessage.value = cause instanceof Error ? cause.message : '工作台数据加载失败'
+      toast.error(errorMessage.value)
     } finally {
       controller.abort()
       loading.value = false
@@ -72,6 +77,7 @@ export function useDashboardPage() {
     activeTasks,
     pendingTaskCount,
     loading,
+    errorMessage,
     serviceReady,
   }
 }

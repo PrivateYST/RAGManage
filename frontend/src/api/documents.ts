@@ -40,6 +40,27 @@ export interface DocumentDetail {
   versions: DocumentVersion[]
 }
 
+/** 两个文档版本的切片级差异汇总。 */
+export interface DocumentVersionDiff {
+  document: { id: string; title: string }
+  before: { id: string; version_no: number }
+  after: { id: string; version_no: number }
+  diff: {
+    before_chunk_count: number
+    after_chunk_count: number
+    added_chunks: number
+    removed_chunks: number
+    changed_chunks: number
+    changes: Array<{
+      kind: 'added' | 'removed' | 'changed'
+      before_ordinals: number[]
+      after_ordinals: number[]
+      before_preview: string[]
+      after_preview: string[]
+    }>
+  }
+}
+
 export interface TaskRow {
   id: string
   tenant_id: string
@@ -97,8 +118,42 @@ export function fetchVersionPreview(versionId: string): Promise<{
   return apiRequest(`/api/v1/document-versions/${encodeURIComponent(versionId)}/preview`)
 }
 
+/** 返回受权限保护的原文件下载地址；浏览器会携带当前 Session Cookie。 */
+export function documentVersionDownloadUrl(versionId: string): string {
+  return `/api/v1/document-versions/${encodeURIComponent(versionId)}/download`
+}
+
+/** 获取同一文档两个版本的切片差异。 */
+export function compareDocumentVersions(
+  documentId: string,
+  beforeVersionId: string,
+  afterVersionId: string,
+): Promise<DocumentVersionDiff> {
+  const query = new URLSearchParams({
+    before_version_id: beforeVersionId,
+    after_version_id: afterVersionId,
+  })
+  return apiRequest(`/api/v1/documents/${encodeURIComponent(documentId)}/compare?${query}`)
+}
+
 export function disableDocument(documentId: string): Promise<void> {
   return apiRequest(`/api/v1/documents/${encodeURIComponent(documentId)}/disable`, {
+    method: 'POST',
+  })
+}
+
+/** 重新排队文档最新版本解析任务。 */
+export function reparseDocument(
+  documentId: string,
+): Promise<{ task: TaskRow; version_id: string }> {
+  return apiRequest(`/api/v1/documents/${encodeURIComponent(documentId)}/reparse`, {
+    method: 'POST',
+  })
+}
+
+/** 创建知识库索引构建，重新生成当前内容的嵌入向量。 */
+export function rebuildKnowledgeBase(knowledgeBaseId: string): Promise<{ task: TaskRow }> {
+  return apiRequest(`/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/builds`, {
     method: 'POST',
   })
 }

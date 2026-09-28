@@ -494,6 +494,24 @@ a {
   }
 }
 
+/* 无障碍基线：键盘用户必须能在所有原生和自定义交互控件上看到统一焦点环。 */
+:where(button, a, select, input, textarea, [role='button'], [tabindex]):focus-visible {
+  outline: 2px solid var(--ring, #2563eb);
+  outline-offset: 2px;
+}
+
+/* 遵循系统减少动效偏好，避免焦点移动或弹窗动画给敏感用户造成不适。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 /* 文档工作区：筛选、上传和详情保持在主内容滚动区域内。 */
 .documents-page {
   padding-bottom: 28px;

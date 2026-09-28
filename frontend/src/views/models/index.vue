@@ -13,6 +13,8 @@ import { useModelsPage } from './index'
 const {
   view,
   loading,
+  loadError,
+  profilesError,
   busyId,
   endpointDialogOpen,
   gatewayKeyDialogOpen,
@@ -26,6 +28,7 @@ const {
   lastHealthResult,
   canManageEndpoints,
   loadPage,
+  loadProfiles,
   openCreateEndpoint,
   openGatewayKeyDialog,
   handleGatewayKeySaved,
@@ -105,6 +108,15 @@ const {
       </div>
     </div>
 
+    <div
+      v-if="loadError"
+      class="content-card mb-[12px] flex items-center justify-between gap-[12px]"
+      role="alert"
+    >
+      <span class="text-xs text-destructive">{{ loadError }}</span>
+      <button class="secondary-button" type="button" @click="loadPage">重新加载模型配置</button>
+    </div>
+
     <nav
       class="mb-[12px] flex items-center gap-[4px] overflow-x-auto rounded-md border border-border bg-secondary p-[4px]"
       aria-label="模型配置视图"
@@ -148,6 +160,16 @@ const {
     />
 
     <template v-else-if="view === 'profiles'">
+      <div
+        v-if="profilesError"
+        class="content-card mb-[12px] flex items-center justify-between gap-[12px]"
+        role="alert"
+      >
+        <span class="text-xs text-destructive">{{ profilesError }}</span>
+        <button class="secondary-button" type="button" @click="loadProfiles">
+          重新加载 Profile
+        </button>
+      </div>
       <div
         class="mb-[12px] flex min-h-[58px] items-center justify-between gap-[16px] rounded-md border border-primary/20 bg-primary/5 px-[12px] py-[10px] max-sm:items-stretch max-sm:flex-col"
       >

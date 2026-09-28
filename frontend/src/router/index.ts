@@ -20,6 +20,7 @@ import ManagementPage from '@/views/management/index.vue'
 import MembersPage from '@/views/members/index.vue'
 import ModelsPage from '@/views/models/index.vue'
 import NotFoundPage from '@/views/not-found/index.vue'
+import RuntimeStatusPage from '@/views/runtime-status/index.vue'
 import SearchTestPage from '@/views/search-test/index.vue'
 import TasksPage from '@/views/tasks/index.vue'
 
@@ -46,6 +47,7 @@ export const routeComponents: Record<string, Component> = {
   '/system/menus': ManagementPage,
   '/system/audit': AuditPage,
   '/system/models': ModelsPage,
+  '/system/status': RuntimeStatusPage,
 }
 
 /** 只有登录、404 和兜底页是静态路由，业务 children 由菜单接口动态补充。 */

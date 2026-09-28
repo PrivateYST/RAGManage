@@ -93,6 +93,8 @@ async function submit(): Promise<void> {
             class="h-[40px] w-full rounded-md border border-border bg-background px-[11px] text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
             autocomplete="username"
             placeholder="请输入账号"
+            :aria-invalid="submitted && !loginName.trim() ? 'true' : 'false'"
+            :aria-describedby="submitted && !canSubmit ? 'login-error' : undefined"
           />
           <label class="mb-[6px] mt-[14px] text-xs font-medium text-[#3f3f46]" for="login-password"
             >密码</label
@@ -104,8 +106,18 @@ async function submit(): Promise<void> {
             type="password"
             autocomplete="current-password"
             placeholder="请输入密码"
+            :aria-invalid="submitted && !password ? 'true' : 'false'"
+            :aria-describedby="submitted && !canSubmit ? 'login-error' : undefined"
           />
-          <p v-if="submitted && !canSubmit" class="field-error">请输入账号和密码</p>
+          <p
+            v-if="submitted && !canSubmit"
+            id="login-error"
+            class="field-error"
+            role="alert"
+            aria-live="polite"
+          >
+            请输入账号和密码
+          </p>
           <button
             class="primary-button mt-[22px] h-[40px] w-full"
             type="submit"

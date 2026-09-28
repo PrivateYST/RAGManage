@@ -8,6 +8,8 @@ import { useAppToast } from '@/composables/useToast'
 const health = shallowRef<Health | null>(null)
 const toast = useAppToast()
 const loading = shallowRef(false)
+// 错误状态与 Toast 并存：页面需要可回看的失败反馈，Toast 只负责即时提醒。
+const errorMessage = shallowRef<string | null>(null)
 let controller: AbortController | undefined
 const labels: Record<string, string> = {
   database: 'PostgreSQL / pgvector',
@@ -27,11 +29,16 @@ async function refresh() {
   controller = current
   loading.value = true
   health.value = null
+  errorMessage.value = null
   const timeout = setTimeout(() => current.abort(), 10000)
   try {
     health.value = await fetchHealth(current.signal)
   } catch {
-    toast.error('服务状态检查失败', '请检查后端服务是否启动后重试。')
+    // 组件卸载或重复刷新会主动 abort，不应把正常取消显示成错误。
+    if (!current.signal.aborted) {
+      errorMessage.value = '服务状态暂时无法读取，请确认后端服务已启动后重试。'
+      toast.error('服务状态检查失败', '请检查后端服务是否启动后重试。')
+    }
   } finally {
     clearTimeout(timeout)
     loading.value = false
@@ -42,19 +49,30 @@ onUnmounted(() => controller?.abort())
 </script>
 
 <template>
-  <section class="content-card mt-[24px]" :aria-busy="loading">
+  <section
+    class="content-card mt-[24px]"
+    :aria-busy="loading"
+    aria-labelledby="environment-status-title"
+  >
     <div
       class="mb-[20px] flex items-center justify-between gap-[16px] border-b border-border pb-[16px]"
     >
       <div>
         <p class="eyebrow mb-[4px]">基础设施</p>
-        <h2>服务状态</h2>
+        <h2 id="environment-status-title">服务状态</h2>
       </div>
       <button class="secondary-button" type="button" :disabled="loading" @click="refresh">
         {{ loading ? '检查中…' : '重新检查' }}
       </button>
     </div>
     <p v-if="loading" class="text-xs text-muted-foreground" role="status">正在连接本地服务…</p>
+    <p
+      v-else-if="errorMessage"
+      class="rounded-md border border-status-danger/20 bg-status-danger-soft px-[12px] py-[8px] text-xs text-status-danger"
+      role="alert"
+    >
+      {{ errorMessage }}
+    </p>
     <template v-else-if="health">
       <p
         class="mb-[16px] rounded-md border px-[12px] py-[8px] text-xs"

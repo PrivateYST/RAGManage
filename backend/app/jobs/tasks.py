@@ -20,6 +20,41 @@ from app.jobs.worker import celery_app
 from app.rag.parsing import ParsedDocument, parse_document
 
 
+async def _recover_expired_task_leases() -> int:
+    """回收租约过期的运行任务并重新排队未完成子项，支持 Worker 崩溃后重放。"""
+    settings = Settings()
+    if not settings.database_url:
+        return 0
+    connection = await asyncpg.connect(settings.database_url, timeout=10)
+    try:
+        async with connection.transaction():
+            rows = await connection.fetch(
+                """
+                UPDATE tasks SET state = 'queued', lease_until = NULL,
+                    error = '{"code":"LEASE_EXPIRED_REQUEUED"}'::jsonb, updated_at = now()
+                WHERE state = 'running' AND lease_until IS NOT NULL AND lease_until < now()
+                RETURNING id
+                """
+            )
+            if rows:
+                await connection.execute(
+                    """
+                    UPDATE task_items SET state = 'queued', error = NULL, updated_at = now()
+                    WHERE task_id = ANY($1::bigint[]) AND state = 'running'
+                    """,
+                    [int(row["id"]) for row in rows],
+                )
+            return len(rows)
+    finally:
+        await connection.close()
+
+
+@celery_app.task(name="app.jobs.tasks.recover_expired_task_leases")  # type: ignore[untyped-decorator]
+def recover_expired_task_leases() -> None:
+    """Celery Beat 入口；周期性回收过期租约，任务本身保持幂等。"""
+    asyncio.run(_recover_expired_task_leases())
+
+
 def _profile_definition() -> dict[str, Any]:
     return {
         "parser": "markdown-it/docx/pdfplumber:v1",

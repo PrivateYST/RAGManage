@@ -20,6 +20,8 @@ export function useAuditLogs() {
   })
   const loading = shallowRef(false)
   const loadingMore = shallowRef(false)
+  // 首屏和分页失败都保留错误原因，首屏提供可重试反馈，分页失败不清空已有日志。
+  const errorMessage = shallowRef('')
   const nextCursor = shallowRef<string | null>(null)
   const selected = shallowRef<SelectedAuditLog>(null)
   const isPlatformAdmin = computed(() => auth.user?.platform_role === 'platform_admin')
@@ -31,6 +33,7 @@ export function useAuditLogs() {
     if (reset) {
       loading.value = true
       nextCursor.value = null
+      errorMessage.value = ''
     } else {
       loadingMore.value = true
     }
@@ -46,7 +49,8 @@ export function useAuditLogs() {
       items.value = reset ? page.items : [...items.value, ...page.items]
       nextCursor.value = page.next_cursor
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '操作日志加载失败')
+      errorMessage.value = cause instanceof Error ? cause.message : '操作日志加载失败'
+      toast.error(errorMessage.value)
       if (reset) items.value = []
     } finally {
       loading.value = false
@@ -70,6 +74,7 @@ export function useAuditLogs() {
     items,
     filters,
     loading,
+    errorMessage,
     loadingMore,
     nextCursor,
     selected,

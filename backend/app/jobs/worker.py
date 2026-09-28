@@ -19,6 +19,10 @@ celery_app.conf.update(
             "task": "app.jobs.outbox.dispatch_outbox_events",
             "schedule": 2.0,
         },
+        "recover-expired-task-leases": {
+            "task": "app.jobs.tasks.recover_expired_task_leases",
+            "schedule": 30.0,
+        },
     },
 )
 # 导入任务模块完成 Celery 注册；任务本身仍通过数据库租约保证可恢复。

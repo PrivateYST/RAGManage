@@ -1,14 +1,25 @@
 """验证文档上传、停用和删除操作与租户审计在同一业务事务中完成。"""
 
+import io
 import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.main import create_app
+
+
+def _docx_fixture() -> bytes:
+    """构造带 DOCX 必需 ZIP 成员的最小上传夹具，不依赖外部文档样本。"""
+    buffer = io.BytesIO()
+    with ZipFile(buffer, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        archive.writestr("word/document.xml", "<document/>")
+    return buffer.getvalue()
 
 
 class FakeTransaction:
@@ -101,7 +112,7 @@ def _audit_call(connection: ContentAuditConnection, action: str) -> tuple[Any, .
 
 
 def test_upload_records_sanitized_tenant_audit(monkeypatch: Any, tmp_path: Path) -> None:
-    """上传成功应记录版本和任务标识，但不得把正文或存储路径写入审计。"""
+    """有效 Markdown 上传应保留审计摘要，且不得写入正文或存储路径。"""
     connection = ContentAuditConnection()
     access = {
         "id": 2,
@@ -133,6 +144,116 @@ def test_upload_records_sanitized_tenant_audit(monkeypatch: Any, tmp_path: Path)
     assert "private document body" not in str(audit)
     assert "storage_key" not in summary
     assert connection.closed
+
+
+def test_upload_rejects_mismatched_declared_mime_before_storage(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """扩展名和 multipart MIME 不匹配时应在落盘、数据库写入前拒绝。"""
+    connection = ContentAuditConnection()
+    access = {
+        "id": 2,
+        "tenant_id": 1,
+        "name": "测试知识库",
+        "tenant_role": "space_admin",
+        "knowledge_base_role": None,
+    }
+    monkeypatch.setattr("app.main._authenticated_user", AsyncMock(return_value=_context()))
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+    monkeypatch.setattr(
+        "app.main._require_knowledge_base_role",
+        AsyncMock(return_value=access),
+    )
+
+    with TestClient(create_app(Settings(storage_root=tmp_path))) as client:
+        response = client.post(
+            "/api/v1/knowledge-bases/2/documents",
+            files={"file": ("spoofed.md", b"%PDF-1.7", "application/pdf")},
+        )
+
+    assert response.status_code == 415
+    assert not connection.execute_calls
+    assert list(tmp_path.rglob("*")) == []
+    assert connection.closed
+
+
+def test_upload_rejects_regular_zip_disguised_as_docx(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """普通 ZIP 即使声明 DOCX MIME 也缺少 Office 成员，必须在存储前拒绝。"""
+    connection = ContentAuditConnection()
+    access = {
+        "id": 2,
+        "tenant_id": 1,
+        "name": "测试知识库",
+        "tenant_role": "space_admin",
+        "knowledge_base_role": None,
+    }
+    monkeypatch.setattr("app.main._authenticated_user", AsyncMock(return_value=_context()))
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+    monkeypatch.setattr(
+        "app.main._require_knowledge_base_role",
+        AsyncMock(return_value=access),
+    )
+    ordinary_zip = io.BytesIO()
+    with ZipFile(ordinary_zip, "w") as archive:
+        archive.writestr("readme.txt", "not a Word document")
+
+    with TestClient(create_app(Settings(storage_root=tmp_path))) as client:
+        response = client.post(
+            "/api/v1/knowledge-bases/2/documents",
+            files={
+                "file": (
+                    "spoofed.docx",
+                    ordinary_zip.getvalue(),
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+        )
+
+    assert response.status_code == 415
+    assert not connection.execute_calls
+    assert list(tmp_path.rglob("*")) == []
+    assert connection.closed
+
+
+def test_upload_accepts_docx_with_office_members(monkeypatch: Any, tmp_path: Path) -> None:
+    """具有 DOCX 必需 Office ZIP 成员且 MIME 匹配的文件应通过上传校验。"""
+    connection = ContentAuditConnection()
+    access = {
+        "id": 2,
+        "tenant_id": 1,
+        "name": "测试知识库",
+        "tenant_role": "space_admin",
+        "knowledge_base_role": None,
+    }
+    monkeypatch.setattr("app.main._authenticated_user", AsyncMock(return_value=_context()))
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+    monkeypatch.setattr(
+        "app.main._require_knowledge_base_role",
+        AsyncMock(return_value=access),
+    )
+
+    with TestClient(create_app(Settings(storage_root=tmp_path))) as client:
+        response = client.post(
+            "/api/v1/knowledge-bases/2/documents",
+            files={
+                "file": (
+                    "office.docx",
+                    _docx_fixture(),
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+        )
+
+    assert response.status_code == 202
+    audit = _audit_call(connection, "document.upload")
+    summary = json.loads(audit[6])
+    assert summary["mime_type"] == (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
 
 def test_disable_document_records_state_transition(monkeypatch: Any) -> None:

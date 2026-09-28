@@ -11,6 +11,7 @@ const {
   activeTasks,
   pendingTaskCount,
   loading,
+  errorMessage,
   serviceReady,
 } = useDashboardPage()
 </script>
@@ -27,9 +28,23 @@ const {
       </div>
       <RouterLink class="primary-button" to="/documents"><Plus :size="16" />上传文档</RouterLink>
     </div>
-    <div v-if="loading" class="content-card module-placeholder mb-[20px] min-h-[170px]">
+    <!-- 状态区域使用 aria-live，键盘和屏幕阅读器用户可感知异步加载开始。 -->
+    <div
+      v-if="loading"
+      class="content-card module-placeholder mb-[20px] min-h-[170px]"
+      role="status"
+      aria-live="polite"
+    >
       <span class="loading-spinner" />
       <p>正在加载工作台…</p>
+    </div>
+    <div
+      v-else-if="errorMessage"
+      class="mb-[20px] rounded-md border border-status-danger/20 bg-status-danger-soft px-[14px] py-[12px] text-sm text-status-danger"
+      role="alert"
+    >
+      <strong class="block text-xs">工作台数据加载失败</strong>
+      <span class="mt-[4px] block text-xs">{{ errorMessage }}，请刷新页面后重试。</span>
     </div>
     <div v-else class="mb-[20px] grid grid-cols-2 gap-[10px] lg:grid-cols-4">
       <div class="flex items-start gap-[12px] rounded-lg border border-border bg-card p-[16px]">
@@ -83,7 +98,10 @@ const {
         </div>
       </div>
     </div>
-    <div v-if="!loading" class="mb-[18px] grid gap-[20px] lg:grid-cols-[1.15fr_0.85fr]">
+    <div
+      v-if="!loading && !errorMessage"
+      class="mb-[18px] grid gap-[20px] lg:grid-cols-[1.15fr_0.85fr]"
+    >
       <section class="content-card">
         <div class="mb-[19px] flex items-start justify-between gap-[16px]">
           <div>

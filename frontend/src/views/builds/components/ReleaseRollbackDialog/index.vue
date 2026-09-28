@@ -75,20 +75,10 @@ const { canConfirm, providerLabel, handleClose, handleConfirm } = useReleaseRoll
     </template>
     <template #footer>
       <div class="release-rollback-footer">
-        <button
-          class="secondary-button"
-          type="button"
-          :disabled="rollingBack"
-          @click="handleClose"
-        >
+        <button class="secondary-button" type="button" :disabled="rollingBack" @click="handleClose">
           取消
         </button>
-        <button
-          class="primary-button"
-          type="button"
-          :disabled="!canConfirm"
-          @click="handleConfirm"
-        >
+        <button class="primary-button" type="button" :disabled="!canConfirm" @click="handleConfirm">
           <RotateCcw :size="15" aria-hidden="true" />{{
             rollingBack ? '正在回退…' : `确认回退到 #${targetRelease?.id ?? ''}`
           }}

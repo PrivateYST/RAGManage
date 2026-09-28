@@ -16,6 +16,8 @@ export function useSearchTest() {
   const contextMaxChars = shallowRef(6000)
   const loadingKnowledgeBases = shallowRef(true)
   const searching = shallowRef(false)
+  // 排障页面需要保留失败原因，Toast 消失后仍能指导用户重试或修正条件。
+  const errorMessage = shallowRef('')
   const result = shallowRef<SearchTestResult | null>(null)
 
   const selectedKnowledgeBase = computed(
@@ -31,6 +33,7 @@ export function useSearchTest() {
   async function loadKnowledgeBases(): Promise<void> {
     loadingKnowledgeBases.value = true
     result.value = null
+    errorMessage.value = ''
     try {
       if (!auth.activeSpaceId) {
         knowledgeBases.value = []
@@ -45,7 +48,8 @@ export function useSearchTest() {
           ''
       }
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '知识库加载失败')
+      errorMessage.value = cause instanceof Error ? cause.message : '知识库加载失败'
+      toast.error(errorMessage.value)
     } finally {
       loadingKnowledgeBases.value = false
     }
@@ -56,6 +60,7 @@ export function useSearchTest() {
     if (!knowledgeBaseId.value || !trimmedQuery || searching.value) return
     searching.value = true
     result.value = null
+    errorMessage.value = ''
     try {
       result.value = await runSearchTest({
         knowledge_base_id: Number(knowledgeBaseId.value),
@@ -64,7 +69,8 @@ export function useSearchTest() {
         context_max_chars: contextMaxChars.value,
       })
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '检索运行失败')
+      errorMessage.value = cause instanceof Error ? cause.message : '检索运行失败'
+      toast.error(errorMessage.value)
     } finally {
       searching.value = false
     }
@@ -81,6 +87,7 @@ export function useSearchTest() {
     contextMaxChars,
     loadingKnowledgeBases,
     searching,
+    errorMessage,
     canSearch,
     result,
     loadKnowledgeBases,

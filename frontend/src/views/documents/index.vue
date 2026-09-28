@@ -1,16 +1,20 @@
 <!-- 文档管理工作区：协调知识库筛选、AppTable 列表、上传和非阻塞详情卡片。 -->
 <script setup lang="ts">
 import type { KnowledgeBaseRow } from '@/api/admin'
-import type { ChunkRow, DocumentDetail, DocumentRow } from '@/api/documents'
+import type { ChunkRow, DocumentDetail, DocumentRow, DocumentVersionDiff } from '@/api/documents'
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fetchKnowledgeBases } from '@/api/admin'
 import {
+  compareDocumentVersions,
   deleteDocument,
   disableDocument,
+  documentVersionDownloadUrl,
   fetchDocument,
   fetchDocuments,
   fetchVersionPreview,
+  rebuildKnowledgeBase,
+  reparseDocument,
   uploadDocument,
 } from '@/api/documents'
 import { AppConfirmDialog, AppDialog, FileText, Plus, RefreshCw, X } from '@/components'
@@ -30,6 +34,9 @@ const searchQuery = shallowRef('')
 const statusFilter = shallowRef('all')
 const loading = shallowRef(false)
 const loadingKnowledgeBases = shallowRef(false)
+// 页面级错误与 Toast 并存，保证列表请求失败后仍有可见、可重试的反馈。
+const knowledgeBasesError = shallowRef('')
+const documentsError = shallowRef('')
 const uploadError = shallowRef('')
 const uploadOpen = shallowRef(false)
 const uploading = shallowRef(false)
@@ -39,6 +46,8 @@ const detailChunks = ref<ChunkRow[]>([])
 const detailLoading = shallowRef(false)
 const detailChunksLoading = shallowRef(false)
 const detailChunksError = shallowRef('')
+const versionDiff = shallowRef<DocumentVersionDiff | null>(null)
+const versionDiffLoading = shallowRef(false)
 const highlightedChunkId = shallowRef('')
 const pendingDocumentAction = shallowRef<{
   document: DocumentRow
@@ -67,8 +76,25 @@ const purposeLabels: Record<string, string> = {
   rule: '业务规则',
 }
 
+/** 将解析器定位字段转成用户可读的页码、表格和区域信息，未知字段原样保留。 */
+function formatLocator(locator: Record<string, number>): string {
+  const labels: Record<string, string> = {
+    page: '第',
+    table: '表格',
+    region: '区域',
+    row: '行',
+    column: '列',
+  }
+  return Object.entries(locator)
+    .map(([key, value]) =>
+      key === 'page' ? `${labels.page}${value}页` : `${labels[key] ?? key} ${value}`,
+    )
+    .join(' · ')
+}
+
 async function loadKnowledgeBases(): Promise<void> {
   loadingKnowledgeBases.value = true
+  knowledgeBasesError.value = ''
   try {
     if (!auth.activeSpaceId) {
       knowledgeBases.value = []
@@ -86,7 +112,8 @@ async function loadKnowledgeBases(): Promise<void> {
       : (knowledgeBases.value[0]?.id ?? '')
     if (!activeKnowledgeBaseId.value) documents.value = []
   } catch (cause) {
-    toast.error(cause instanceof Error ? cause.message : '知识库加载失败')
+    knowledgeBasesError.value = cause instanceof Error ? cause.message : '知识库加载失败'
+    toast.error(knowledgeBasesError.value)
   } finally {
     loadingKnowledgeBases.value = false
   }
@@ -98,10 +125,12 @@ async function loadDocuments(): Promise<void> {
     return
   }
   loading.value = true
+  documentsError.value = ''
   try {
     documents.value = (await fetchDocuments(activeKnowledgeBaseId.value)).items
   } catch (cause) {
-    toast.error(cause instanceof Error ? cause.message : '文档加载失败')
+    documentsError.value = cause instanceof Error ? cause.message : '文档加载失败'
+    toast.error(documentsError.value)
   } finally {
     loading.value = false
   }
@@ -136,6 +165,7 @@ async function openDetail(document: DocumentRow, preferredVersionId?: string): P
   detailChunksError.value = ''
   detail.value = null
   detailChunks.value = []
+  versionDiff.value = null
   try {
     const data = await fetchDocument(document.id)
     detail.value = data
@@ -147,6 +177,41 @@ async function openDetail(document: DocumentRow, preferredVersionId?: string): P
   } catch (cause) {
     toast.error(cause instanceof Error ? cause.message : '文档详情加载失败')
     detailLoading.value = false
+  }
+}
+
+/** 对比详情中的最新两个版本，并只展示服务端生成的短摘要。 */
+async function compareLatestVersions(): Promise<void> {
+  if (!detail.value || detail.value.versions.length < 2) return
+  versionDiffLoading.value = true
+  try {
+    const [after, before] = detail.value.versions
+    versionDiff.value = await compareDocumentVersions(detail.value.document.id, before.id, after.id)
+  } catch (cause) {
+    toast.error(cause instanceof Error ? cause.message : '版本对比失败')
+  } finally {
+    versionDiffLoading.value = false
+  }
+}
+
+/** 重新解析当前文档；嵌入重建由知识库构建入口负责。 */
+async function requestReparse(): Promise<void> {
+  if (!detail.value) return
+  try {
+    await reparseDocument(detail.value.document.id)
+    toast.success('已重新排队解析', '解析完成后可从知识库构建入口重新生成嵌入。')
+  } catch (cause) {
+    toast.error(cause instanceof Error ? cause.message : '重新解析失败')
+  }
+}
+
+async function requestRebuild(): Promise<void> {
+  if (!detail.value) return
+  try {
+    await rebuildKnowledgeBase(detail.value.document.knowledge_base_id)
+    toast.success('已创建嵌入构建任务', '后台将重新生成当前知识库索引。')
+  } catch (cause) {
+    toast.error(cause instanceof Error ? cause.message : '重新嵌入失败')
   }
 }
 
@@ -187,7 +252,13 @@ function closeDetail(): void {
   detailChunks.value = []
   detailChunksError.value = ''
   detailChunksLoading.value = false
+  versionDiff.value = null
   highlightedChunkId.value = ''
+}
+
+/** 在新标签页打开受保护下载地址，服务端负责 Session/租户/发布版本鉴权。 */
+function downloadVersion(versionId: string): void {
+  window.open(documentVersionDownloadUrl(versionId), '_blank', 'noopener,noreferrer')
 }
 
 /** 打开停用确认框，真正的状态变更只在确认事件中发生。 */
@@ -340,9 +411,29 @@ watch(
       :count="visibleDocuments.length"
     />
 
+    <div
+      v-if="knowledgeBasesError"
+      class="content-card mb-[12px] flex items-center justify-between gap-[12px]"
+      role="alert"
+    >
+      <span class="text-xs text-destructive">{{ knowledgeBasesError }}</span>
+      <button class="secondary-button" type="button" @click="loadKnowledgeBases">
+        重新加载知识库
+      </button>
+    </div>
+
     <div v-if="loading" class="content-card module-placeholder document-loading">
       <span class="loading-spinner" />
       <p>正在加载文档…</p>
+    </div>
+    <div
+      v-else-if="documentsError"
+      class="content-card flex min-h-[180px] flex-col items-center justify-center gap-[10px]"
+      role="alert"
+    >
+      <strong class="text-sm text-destructive">文档加载失败</strong>
+      <p class="text-xs text-muted-foreground">{{ documentsError }}</p>
+      <button class="secondary-button" type="button" @click="loadDocuments">重新加载文档</button>
     </div>
     <DocumentTable
       v-else
@@ -424,6 +515,13 @@ watch(
             }}</span
           ><span>版本数：{{ detail.versions.length }}</span>
         </div>
+        <div
+          v-if="detail.versions[0]?.parse_status === 'partial'"
+          class="mb-[12px] rounded-md border border-status-warning/30 bg-status-warning-soft px-[10px] py-[8px] text-[10px] text-status-warning"
+          role="status"
+        >
+          当前版本为部分完成：缺失页、表格或区域可能无法预览，以下内容仅代表已成功解析的部分。
+        </div>
         <div class="flex max-h-[150px] flex-col gap-[6px] overflow-y-auto pr-[4px]">
           <div
             v-for="version in detail.versions"
@@ -448,7 +546,49 @@ watch(
               "
               >{{ parseStatusLabel(version.parse_status) }}</span
             >
+            <button class="table-action" type="button" @click="downloadVersion(version.id)">
+              下载
+            </button>
           </div>
+        </div>
+        <div class="mt-[10px] flex flex-wrap justify-end gap-[8px]">
+          <button class="table-action" type="button" @click="requestReparse">重新解析</button>
+          <button class="table-action" type="button" @click="requestRebuild">重新嵌入</button>
+        </div>
+        <div class="mt-[10px] flex items-center justify-between">
+          <strong class="text-xs text-foreground">版本对比</strong>
+          <button
+            class="table-action"
+            type="button"
+            :disabled="detail.versions.length < 2 || versionDiffLoading"
+            @click="compareLatestVersions"
+          >
+            {{ versionDiffLoading ? '对比中…' : '对比最新两个版本' }}
+          </button>
+        </div>
+        <div
+          v-if="versionDiff"
+          class="mt-[8px] rounded-md border border-border bg-secondary px-[10px] py-[8px] text-[10px]"
+        >
+          <div class="flex flex-wrap gap-[12px] text-muted-foreground">
+            <span>V{{ versionDiff.before.version_no }} → V{{ versionDiff.after.version_no }}</span>
+            <span>新增 {{ versionDiff.diff.added_chunks }}</span>
+            <span>删除 {{ versionDiff.diff.removed_chunks }}</span>
+            <span>变更 {{ versionDiff.diff.changed_chunks }}</span>
+          </div>
+          <div v-if="versionDiff.diff.changes.length" class="mt-[6px] space-y-[4px]">
+            <p
+              v-for="(change, index) in versionDiff.diff.changes.slice(0, 5)"
+              :key="index"
+              class="m-0"
+            >
+              {{
+                change.kind === 'added' ? '新增' : change.kind === 'removed' ? '删除' : '变更'
+              }}切片：
+              {{ (change.after_preview[0] || change.before_preview[0] || '').slice(0, 120) }}
+            </p>
+          </div>
+          <p v-else class="mt-[6px] mb-0 text-muted-foreground">两个版本内容没有差异。</p>
         </div>
         <div
           v-if="detail.versions[0]?.warnings.length"
@@ -486,9 +626,7 @@ watch(
                 <span>#{{ chunk.ordinal + 1 }}</span>
                 <span v-if="chunk.section_path.length">{{ chunk.section_path.join(' / ') }}</span>
                 <code class="ml-auto text-[9px] text-muted-foreground">{{
-                  Object.entries(chunk.locator)
-                    .map(([key, value]) => `${key} ${value}`)
-                    .join(' · ')
+                  formatLocator(chunk.locator)
                 }}</code>
               </div>
               <p
