@@ -28,7 +28,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $deployRoot = $env:GITHUB_WORKSPACE
-          $serverEnv = 'D:\project\ragmanage\.env'
+          $serverEnv = 'D:\services\ragmanage\.env'
           if (-not (Test-Path $serverEnv)) { throw "Missing production env file: $serverEnv" }
           Set-Location $deployRoot
           # Fail before building images when the runner service cannot reach Docker Desktop.
