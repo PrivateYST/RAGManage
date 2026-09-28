@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
 import asyncpg
@@ -22,7 +22,7 @@ from app.core.api_keys import (
 from app.core.config import Settings
 from app.rag.models import ModelGatewayClient, estimate_token_count
 from app.rag.profiles import gateway_settings
-from app.rag.retrieval import RetrievalServiceError, execute_vector_search
+from app.rag.retrieval import RetrievalServiceError, assemble_evidence, execute_vector_search
 
 CITATION_PATTERN = re.compile(r"\[证据\s*(\d+)\]")
 MARKDOWN_URL_PATTERN = re.compile(r"\[([^\]]+)]\(https?://[^)]+\)", re.IGNORECASE)
@@ -55,8 +55,9 @@ def build_grounded_messages(
     question: str,
     context: str,
     answer_rules: str = "",
+    history: Sequence[Mapping[str, str]] = (),
 ) -> list[dict[str, str]]:
-    """构造只能依据编号证据作答的系统提示和用户问题。"""
+    """构造带最近会话上下文、但事实结论必须引用本轮证据的消息。"""
     system = (
         "你是公司知识库问答助手。只能使用给定证据回答，不得使用外部知识。"
         "每个事实结论都必须使用形如 [证据 1] 的编号引用。"
@@ -68,7 +69,193 @@ def build_grounded_messages(
     if answer_rules.strip():
         system += f"\n当前知识库补充回答规则：{answer_rules.strip()}"
     user = f"问题：\n{question}\n\n可用证据：\n{context}"
-    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    messages = [{"role": "system", "content": system}]
+    messages.extend(
+        {"role": item["role"], "content": item["content"]}
+        for item in history
+        if item.get("role") in {"user", "assistant"} and item.get("content", "").strip()
+    )
+    messages.append({"role": "user", "content": user})
+    return messages
+
+
+def build_general_assistant_messages(
+    question: str,
+    history: Sequence[Mapping[str, str]],
+) -> list[dict[str, str]]:
+    """构造不需要知识库证据的普通助理对话，并明确避免编造租户事实。"""
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你是 RAGManage 的企业 AI 助理。使用最近对话理解追问，直接、清晰地回答一般交流、"
+                "上下文管理和系统使用方式。涉及当前客户的制度、业务数据或知识库事实时，"
+                "如果没有检索证据，不要猜测；说明需要查询对应资料。不要输出网址或虚构来源。"
+            ),
+        }
+    ]
+    messages.extend(
+        {"role": item["role"], "content": item["content"]}
+        for item in history
+        if item.get("role") in {"user", "assistant"} and item.get("content", "").strip()
+    )
+    messages.append({"role": "user", "content": question})
+    return messages
+
+
+async def classify_assistant_question(
+    client: ModelGatewayClient,
+    *,
+    question: str,
+    history: Sequence[Mapping[str, str]],
+) -> dict[str, Any]:
+    """判断本轮是否需要跨知识库检索，并为含糊追问生成独立检索查询。"""
+    history_payload = [
+        {"role": item["role"], "content": item["content"][-2000:]}
+        for item in history[-8:]
+        if item.get("role") in {"user", "assistant"} and item.get("content", "").strip()
+    ]
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你负责为企业 AI 助理路由每条新消息。判断是否需要查询客户知识库："
+                "客户制度、产品操作、业务事实、流程、政策和对话中承接的知识问题需要检索；"
+                "问候、感谢、闲聊、对刚才回答的格式或上下文管理要求不需要检索。"
+                "如果需要检索，把当前问题结合历史改写为可独立检索的简短问题。"
+                '只输出 JSON：{"retrieve":true或false,"query":"检索问题或空字符串"}。'
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {"history": history_payload, "question": question}, ensure_ascii=False
+            ),
+        },
+    ]
+    result = await client.complete_chat(messages, temperature=0, max_tokens=96)
+    raw = str(result["content"])
+    match = re.search(r"\{[\s\S]*\}", raw)
+    try:
+        decision = json.loads(match.group(0)) if match else {}
+    except json.JSONDecodeError:
+        decision = {}
+    retrieve = decision.get("retrieve") if isinstance(decision, dict) else None
+    query = decision.get("query") if isinstance(decision, dict) else None
+    # 路由输出不完整或格式异常时采用保守检索，避免把应有依据的事实问题当闲聊作答。
+    if not isinstance(retrieve, bool):
+        retrieve = True
+    if not isinstance(query, str) or not query.strip():
+        query = question
+    return {
+        "retrieve": retrieve,
+        "query": query.strip()[:4000],
+        "usage": result["usage"],
+        "model": client.settings.generation_model,
+    }
+
+
+def validate_general_answer(content: str) -> str:
+    """清理普通助理输出中的 URL，保留不要求引用知识库的自然回答。"""
+    sanitized = MARKDOWN_URL_PATTERN.sub(r"\1", content)
+    sanitized = RAW_URL_PATTERN.sub("", sanitized).strip()
+    return sanitized or "我暂时没有生成有效回答，请换一种方式提问。"
+
+
+async def execute_assistant_scope_search(
+    connection: asyncpg.Connection,
+    settings: Settings,
+    *,
+    tenant_id: int,
+    user_id: int,
+    query: str,
+    message_id: int,
+    on_embedding_usage: Callable[[Mapping[str, Any], str, str], Awaitable[None]] | None,
+    top_k: int = 10,
+    context_max_chars: int = 8000,
+) -> dict[str, Any]:
+    """在 API Key 所属空间的全部已发布知识库中检索并统一编号候选证据。"""
+    knowledge_bases = await connection.fetch(
+        """
+        SELECT kb.id, kb.name, kb.active_release_id, rp.definition AS runtime_definition
+        FROM knowledge_bases kb
+        LEFT JOIN runtime_profiles rp ON rp.id = kb.active_runtime_id
+          AND rp.tenant_id = kb.tenant_id AND rp.knowledge_base_id = kb.id
+        WHERE kb.tenant_id = $1 AND kb.status <> 'disabled'
+          AND kb.active_release_id IS NOT NULL
+        ORDER BY kb.updated_at DESC, kb.id
+        """,
+        tenant_id,
+    )
+    trace_ids: list[str] = []
+    candidate_items: list[dict[str, Any]] = []
+    states: list[str] = []
+    for knowledge_base in knowledge_bases:
+        runtime_definition = _json_value(knowledge_base["runtime_definition"], {})
+        retrieval_definition = runtime_definition.get("retrieval", {})
+
+        async def report_usage_for_knowledge_base(
+            usage: Mapping[str, Any],
+            model_name: str,
+            knowledge_base_id: str = str(knowledge_base["id"]),
+        ) -> None:
+            """让同一嵌入模型在不同知识库的消费可分别更新和结算。"""
+            if on_embedding_usage is not None:
+                await on_embedding_usage(usage, model_name, knowledge_base_id)
+
+        result = await execute_vector_search(
+            connection,
+            settings,
+            tenant_id=tenant_id,
+            knowledge_base_id=int(knowledge_base["id"]),
+            user_id=user_id,
+            query=query,
+            active_release_id=int(knowledge_base["active_release_id"]),
+            top_k=int(retrieval_definition.get("top_k", top_k)),
+            context_max_chars=context_max_chars,
+            message_id=message_id,
+            on_embedding_usage=(
+                report_usage_for_knowledge_base if on_embedding_usage is not None else None
+            ),
+        )
+        states.append(str(result["state"]))
+        trace_id = result.get("trace_id")
+        if trace_id:
+            trace_ids.append(str(trace_id))
+        for item in result["items"]:
+            candidate = dict(item)
+            candidate["knowledge_base_id"] = str(knowledge_base["id"])
+            candidate["knowledge_base_name"] = str(knowledge_base["name"])
+            # 单库函数已编号其上下文；全局合并时重新排序并生成唯一证据编号。
+            candidate["context_included"] = False
+            candidate["evidence_no"] = None
+            candidate_items.append(candidate)
+
+    candidate_items.sort(
+        key=lambda item: (
+            -float(item.get("fused_score", 0)),
+            -float(item.get("similarity", 0)),
+            str(item.get("knowledge_base_name", "")),
+        )
+    )
+    items, context = assemble_evidence(
+        candidate_items,
+        context_max_chars=context_max_chars,
+    )
+    if items:
+        state = "completed"
+    elif "index_not_ready" in states:
+        state = "index_not_ready"
+    else:
+        state = "no_results"
+    return {
+        "state": state,
+        "trace_id": trace_ids[0] if trace_ids else "",
+        "trace_ids": trace_ids,
+        "items": items,
+        "context": context,
+        "knowledge_base_count": len(knowledge_bases),
+    }
 
 
 def validate_generated_answer(
@@ -105,6 +292,31 @@ def validate_generated_answer(
     return sanitized, cited, "answered"
 
 
+def aggregate_embedding_usage(
+    usage_by_operation: Mapping[str, Mapping[str, Mapping[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    """合并各知识库最终嵌入用量；每个操作中的 estimate 已由真实值覆盖。"""
+    aggregated: dict[str, dict[str, Any]] = {}
+    for model_usage in usage_by_operation.values():
+        for model_name, usage in model_usage.items():
+            combined = aggregated.setdefault(
+                model_name,
+                {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                    "usage_source": "gateway",
+                },
+            )
+            for field in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                combined[field] += max(0, int(usage.get(field, 0)))
+            if usage.get("usage_source") == "estimate":
+                combined["usage_source"] = "estimate"
+            elif usage.get("usage_source") != "gateway" and combined["usage_source"] != "estimate":
+                combined["usage_source"] = "unavailable"
+    return aggregated
+
+
 async def load_run_snapshot(
     connection: asyncpg.Connection,
     *,
@@ -113,11 +325,11 @@ async def load_run_snapshot(
     api_key_tenant_id: int | str | None = None,
     api_key_id: str | None = None,
 ) -> dict[str, Any] | None:
-    """读取运行快照；将鉴权上下文的字符串 ID 归一化后再绑定 bigint 参数。"""
+    """读取运行快照并归一化鉴权 ID。API Key 读取自身运行；网页登录只读取有权访问的单库会话。"""
     row = await connection.fetchrow(
         """
         SELECT gr.id::text, gr.public_id::text AS public_id, gr.tenant_id::text,
-               gr.knowledge_base_id::text,
+               gr.knowledge_base_id::text, conversation.scope AS conversation_scope,
                gr.conversation_id::text, gr.user_message_id::text,
                gr.assistant_message_id::text, gr.release_id::text, gr.api_key_id::text,
                gr.request_id::text, gr.state, gr.outcome, gr.cancel_requested,
@@ -146,7 +358,7 @@ async def load_run_snapshot(
           AND km.user_id = $2 AND km.status = 'active'
         WHERE gr.id = $1 AND (
           ($3::bigint IS NOT NULL AND gr.tenant_id = $3 AND gr.api_key_id = $4) OR
-          ($3::bigint IS NULL AND (
+          ($3::bigint IS NULL AND conversation.scope = 'knowledge_base' AND (
             tenant_role.code IN ('space_admin', 'customer_reader') OR km.user_id IS NOT NULL
           ))
         )
@@ -167,7 +379,7 @@ async def load_run_snapshot(
                    citation.document_version_id::text, citation.locator,
                    document.id::text AS document_id, document.title AS document_title,
                    version.version_no, chunk.section_path, chunk.content,
-                   chunk.knowledge_base_id::text
+                   chunk.knowledge_base_id::text, kb.name AS knowledge_base_name
             FROM message_citations citation
             JOIN chunks chunk ON chunk.id = citation.chunk_id
               AND chunk.tenant_id = citation.tenant_id
@@ -176,6 +388,8 @@ async def load_run_snapshot(
             JOIN documents document ON document.id = version.document_id
               AND document.tenant_id = citation.tenant_id
               AND document.status = 'active' AND document.deleted_at IS NULL
+            JOIN knowledge_bases kb ON kb.id = chunk.knowledge_base_id
+              AND kb.tenant_id = chunk.tenant_id
             WHERE citation.tenant_id = $1 AND citation.message_id = $2
             ORDER BY citation.evidence_no
             """,
@@ -213,6 +427,7 @@ async def _finish_without_generation(
     outcome: str,
     release_id: int | None,
     trace_id: str,
+    trace_ids: Sequence[str] = (),
     usage: Mapping[str, Any] | None = None,
 ) -> bool:
     """原子领取完成权并写入无生成回答；取消已先发生时不覆盖终态。"""
@@ -245,6 +460,7 @@ async def _finish_without_generation(
             json.dumps(
                 {
                     "retrieval_trace_id": trace_id,
+                    "retrieval_trace_ids": list(trace_ids) or ([trace_id] if trace_id else []),
                     "prompt_tokens": int(final_usage.get("prompt_tokens", 0)),
                     "completion_tokens": int(final_usage.get("completion_tokens", 0)),
                     "total_tokens": int(final_usage.get("total_tokens", 0)),
@@ -287,12 +503,13 @@ async def _persist_completed_answer(
     run_id: int,
     tenant_id: int,
     assistant_message_id: int,
-    release_id: int,
+    release_id: int | None,
     content: str,
     outcome: str,
     cited_numbers: Sequence[int],
     evidence: Sequence[dict[str, Any]],
     trace_id: str,
+    trace_ids: Sequence[str] = (),
     usage: dict[str, Any],
 ) -> bool:
     """只有仍持有 running 状态的执行者才能提交最终答案和引用。"""
@@ -329,6 +546,7 @@ async def _persist_completed_answer(
             json.dumps(
                 {
                     "retrieval_trace_id": trace_id,
+                    "retrieval_trace_ids": list(trace_ids) or ([trace_id] if trace_id else []),
                     "citation_count": len(cited_numbers),
                     **usage,
                 },
@@ -409,15 +627,29 @@ def _combined_usage(
     embedding_model: str | None,
     generation_usage: Mapping[str, Any] | None,
     generation_model: str | None,
+    embedding_breakdown: Mapping[str, Mapping[str, Any]] | None = None,
+    routing_usage: Mapping[str, Any] | None = None,
+    routing_model: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], str]:
-    """合并嵌入和生成用量，同时保留按模型拆分的审计明细。"""
+    """合并意图路由、多个知识库嵌入和回答生成用量，保留按模型拆分的审计明细。"""
     model_usage: dict[str, Any] = {}
     parts: list[Mapping[str, Any]] = []
     model_names: list[str] = []
-    if embedding_usage is not None and embedding_model:
+    if embedding_breakdown:
+        embedding_key_prefix = len(embedding_breakdown) == 1
+        for model_name, part in embedding_breakdown.items():
+            key = "embedding" if embedding_key_prefix else f"embedding:{model_name}"
+            model_usage[key] = {"model": model_name, **dict(part)}
+            parts.append(part)
+            model_names.append(model_name)
+    elif embedding_usage is not None and embedding_model:
         model_usage["embedding"] = {"model": embedding_model, **dict(embedding_usage)}
         parts.append(embedding_usage)
         model_names.append(embedding_model)
+    if routing_usage is not None and routing_model:
+        model_usage["routing"] = {"model": routing_model, **dict(routing_usage)}
+        parts.append(routing_usage)
+        model_names.append(routing_model)
     if generation_usage is not None and generation_model:
         model_usage["generation"] = {"model": generation_model, **dict(generation_usage)}
         parts.append(generation_usage)
@@ -462,19 +694,23 @@ async def stream_generation_run(
     row: asyncpg.Record | None = None
     reserved_tokens = 0
     quota_settled = False
-    embedding_usage: dict[str, Any] | None = None
-    embedding_model: str | None = None
+    embedding_usage_by_operation: dict[str, dict[str, dict[str, Any]]] = {}
+    routing_usage: dict[str, Any] | None = None
+    routing_model: str | None = None
     gateway_usage: dict[str, Any] | None = None
     generation_model: str | None = None
     prompt_tokens_estimate = 0
     generated_parts: list[str] = []
     generation_started = False
 
-    async def capture_embedding_usage(usage: Mapping[str, Any], model_name: str) -> None:
-        """在嵌入前后保存估算/真实消费，供进程中断及后续失败路径结算。"""
-        nonlocal embedding_usage, embedding_model
-        embedding_usage = dict(usage)
-        embedding_model = model_name
+    async def capture_embedding_usage(
+        usage: Mapping[str, Any],
+        model_name: str,
+        operation_id: str = "single",
+    ) -> None:
+        """按知识库记录嵌入估算或实测消费，供进程中断及失败路径结算。"""
+        # execute_vector_search 会先报告估算值，再报告网关实测值；同一模型应以后者覆盖。
+        embedding_usage_by_operation.setdefault(operation_id, {})[model_name] = dict(usage)
         await persist_quota_progress()
 
     def current_usage() -> tuple[dict[str, Any], dict[str, Any], str]:
@@ -489,10 +725,13 @@ async def stream_generation_run(
                 "usage_source": "estimate",
             }
         return _combined_usage(
-            embedding_usage=embedding_usage,
-            embedding_model=embedding_model,
+            embedding_usage=None,
+            embedding_model=None,
             generation_usage=generation_usage,
             generation_model=generation_model,
+            embedding_breakdown=aggregate_embedding_usage(embedding_usage_by_operation),
+            routing_usage=routing_usage,
+            routing_model=routing_model,
         )
 
     async def finalize_quota(status: str) -> dict[str, Any]:
@@ -622,40 +861,116 @@ async def stream_generation_run(
             client = ModelGatewayClient(generation_settings)
         else:
             client = ModelGatewayClient(settings)
-        if api_key_id is not None:
-            # UTF-8 字节数是跨中英文分词器的保守上界，确保嵌入调用前额度已锁定。
-            reserved_tokens += await reserve_api_key_tokens(
-                connection,
-                api_key_id=api_key_id,
-                run_id=run_id,
-                requested_tokens=len(str(snapshot["question"]).encode("utf-8")),
+        assistant_scope = snapshot.get("conversation_scope") == "assistant"
+        history: list[dict[str, str]] = []
+        if assistant_scope:
+            history_rows = await connection.fetch(
+                """
+                SELECT role, content FROM messages
+                WHERE tenant_id = $1 AND conversation_id = $2 AND id < $3
+                  AND role IN ('user', 'assistant') AND state = 'complete'
+                ORDER BY id DESC LIMIT 8
+                """,
+                int(row["tenant_id"]),
+                int(snapshot["conversation_id"]),
+                int(row["user_message_id"]),
             )
-        retrieval = await execute_vector_search(
-            connection,
-            settings,
-            tenant_id=int(row["tenant_id"]),
-            knowledge_base_id=int(row["knowledge_base_id"]),
-            user_id=user_id,
-            query=str(snapshot["question"]),
-            active_release_id=(int(row["release_id"]) if row["release_id"] is not None else None),
-            top_k=int(retrieval_definition.get("top_k", 10)),
-            context_max_chars=int(retrieval_definition.get("context_max_chars", 8000)),
-            message_id=int(row["assistant_message_id"]),
-            on_embedding_usage=capture_embedding_usage,
-        )
+            history = [
+                {"role": str(item["role"]), "content": str(item["content"])}
+                for item in reversed(history_rows)
+            ]
+            route_messages = [
+                {"role": item["role"], "content": item["content"][-2000:]}
+                for item in history
+            ] + [{"role": "user", "content": str(snapshot["question"])}]
+            if api_key_id is not None:
+                # 路由模型也计入 Key 额度；用 UTF-8 字节数覆盖短 JSON 分类输出上限。
+                reserved_tokens += await reserve_api_key_tokens(
+                    connection,
+                    api_key_id=api_key_id,
+                    run_id=run_id,
+                    requested_tokens=sum(
+                        len(item["content"].encode("utf-8")) for item in route_messages
+                    )
+                    # 额外覆盖路由系统提示和结构化 JSON 输出预算。
+                    + 1024,
+                )
+            route = await classify_assistant_question(
+                ModelGatewayClient(settings),
+                question=str(snapshot["question"]),
+                history=history,
+            )
+            routing_usage = dict(route["usage"])
+            routing_model = str(route["model"])
+            await persist_quota_progress()
+            if route["retrieve"]:
+                retrieval = await execute_assistant_scope_search(
+                    connection,
+                    settings,
+                    tenant_id=int(api_key_tenant_id or row["tenant_id"]),
+                    user_id=user_id,
+                    query=str(route["query"]),
+                    message_id=int(row["assistant_message_id"]),
+                    on_embedding_usage=capture_embedding_usage,
+                    context_max_chars=int(retrieval_definition.get("context_max_chars", 8000)),
+                )
+                retrieval["mode"] = "knowledge_base"
+            else:
+                retrieval = {
+                    "state": "skipped",
+                    "trace_id": "",
+                    "trace_ids": [],
+                    "items": [],
+                    "context": "",
+                    "knowledge_base_count": 0,
+                    "mode": "general",
+                }
+        else:
+            if api_key_id is not None:
+                # UTF-8 字节数是跨中英文分词器的保守上界，确保查询消耗先进入预留额度。
+                reserved_tokens += await reserve_api_key_tokens(
+                    connection,
+                    api_key_id=api_key_id,
+                    run_id=run_id,
+                    requested_tokens=len(str(snapshot["question"]).encode("utf-8")),
+                )
+            retrieval = await execute_vector_search(
+                connection,
+                settings,
+                tenant_id=int(row["tenant_id"]),
+                knowledge_base_id=int(row["knowledge_base_id"]),
+                user_id=user_id,
+                query=str(snapshot["question"]),
+                active_release_id=(
+                    int(row["release_id"]) if row["release_id"] is not None else None
+                ),
+                top_k=int(retrieval_definition.get("top_k", 10)),
+                context_max_chars=int(retrieval_definition.get("context_max_chars", 8000)),
+                message_id=int(row["assistant_message_id"]),
+                on_embedding_usage=capture_embedding_usage,
+            )
+            retrieval["trace_ids"] = (
+                [str(retrieval["trace_id"])] if retrieval.get("trace_id") else []
+            )
+            retrieval["knowledge_base_count"] = 1
+            retrieval["mode"] = "knowledge_base"
+        # 正式检索通过回调上报用量；同时读取返回值，兼容已有服务替身和未启用回调的调用者。
         raw_embedding_usage = retrieval.get("embedding_usage")
-        embedding_usage = (
-            dict(raw_embedding_usage) if isinstance(raw_embedding_usage, Mapping) else None
-        )
         raw_embedding_model = retrieval.get("embedding_model")
-        embedding_model = str(raw_embedding_model) if raw_embedding_model else None
+        if isinstance(raw_embedding_usage, Mapping) and raw_embedding_model:
+            embedding_usage_by_operation.setdefault("single", {})[
+                str(raw_embedding_model)
+            ] = dict(raw_embedding_usage)
         await persist_quota_progress()
         yield sse_event(
             "retrieval",
             {
                 "state": retrieval["state"],
                 "trace_id": retrieval["trace_id"],
+                "trace_ids": retrieval["trace_ids"],
                 "evidence_count": len(retrieval["items"]),
+                "knowledge_base_count": retrieval["knowledge_base_count"],
+                "mode": retrieval["mode"],
             },
         )
         await _persist_evidence(
@@ -683,7 +998,7 @@ async def stream_generation_run(
             )
             yield sse_event("cancelled", {"run": latest})
             return
-        if retrieval["state"] != "completed":
+        if retrieval["state"] not in {"completed", "skipped"}:
             outcome = "index_not_ready" if retrieval["state"] == "index_not_ready" else "no_answer"
             content = (
                 "当前知识库索引尚未就绪，暂时无法回答。"
@@ -700,6 +1015,7 @@ async def stream_generation_run(
                 outcome=outcome,
                 release_id=(int(row["release_id"]) if row["release_id"] is not None else None),
                 trace_id=retrieval["trace_id"],
+                trace_ids=retrieval["trace_ids"],
                 usage=usage,
             )
             await finalize_quota("completed" if completed else "cancelled")
@@ -713,11 +1029,15 @@ async def stream_generation_run(
             yield sse_event("done" if completed else "cancelled", {"run": latest})
             return
 
-        messages = build_grounded_messages(
-            str(snapshot["question"]),
-            retrieval["context"],
-            str(runtime_definition.get("answer_rules", "")),
-        )
+        if retrieval["state"] == "skipped":
+            messages = build_general_assistant_messages(str(snapshot["question"]), history)
+        else:
+            messages = build_grounded_messages(
+                str(snapshot["question"]),
+                retrieval["context"],
+                str(runtime_definition.get("answer_rules", "")),
+                history,
+            )
         generation_model = client.settings.generation_model
         effective_max_tokens = (
             max_tokens if max_tokens is not None else client.settings.generation_max_tokens
@@ -809,22 +1129,28 @@ async def stream_generation_run(
             for item in retrieval["items"]
             if item.get("context_included") and item.get("evidence_no") is not None
         }
-        content, cited_numbers, outcome = validate_generated_answer(
-            "".join(generated_parts),
-            valid_numbers,
-        )
+        if retrieval["state"] == "skipped":
+            content = validate_general_answer("".join(generated_parts))
+            cited_numbers: list[int] = []
+            outcome = "answered"
+        else:
+            content, cited_numbers, outcome = validate_generated_answer(
+                "".join(generated_parts),
+                valid_numbers,
+            )
         usage = current_usage()[0]
         completed = await _persist_completed_answer(
             connection,
             run_id=run_id,
             tenant_id=int(row["tenant_id"]),
             assistant_message_id=int(row["assistant_message_id"]),
-            release_id=int(row["release_id"]),
+            release_id=(int(row["release_id"]) if row["release_id"] is not None else None),
             content=content,
             outcome=outcome,
             cited_numbers=cited_numbers,
             evidence=retrieval["items"],
             trace_id=retrieval["trace_id"],
+            trace_ids=retrieval["trace_ids"],
             usage=usage,
         )
         await finalize_quota("completed" if completed else "cancelled")

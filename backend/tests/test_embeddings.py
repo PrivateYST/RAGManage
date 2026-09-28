@@ -102,6 +102,52 @@ def test_model_client_streams_openai_chat_chunks() -> None:
     assert asyncio.run(collect()) == ["办理", "完成 [证据 1]"]
 
 
+def test_model_client_completes_short_chat_and_reports_usage() -> None:
+    """助理意图路由使用非流式兼容接口，并保留模型网关返回的用量。"""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert request.url.path == "/api/chat/completions"
+        assert payload["stream"] is False
+        assert payload["temperature"] == 0
+        assert payload["max_tokens"] == 96
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": '{"retrieve": false, "query": ""}'}}],
+                "usage": {
+                    "prompt_tokens": 20,
+                    "completion_tokens": 5,
+                    "total_tokens": 25,
+                },
+            },
+        )
+
+    async def complete() -> dict[str, Any]:
+        settings = Settings(
+            model_gateway_base_url="http://open-webui.internal",
+            model_gateway_api_key=SecretStr("gateway-secret"),
+            generation_model="qwen2.5:0.5b",
+            model_gateway_allowed_models="qwen2.5:0.5b",
+        )
+        client = ModelGatewayClient(settings, transport=httpx.MockTransport(handler))
+        return await client.complete_chat(
+            [{"role": "user", "content": "你好"}],
+            temperature=0,
+            max_tokens=96,
+        )
+
+    assert asyncio.run(complete()) == {
+        "content": '{"retrieve": false, "query": ""}',
+        "usage": {
+            "prompt_tokens": 20,
+            "completion_tokens": 5,
+            "total_tokens": 25,
+            "usage_source": "gateway",
+        },
+    }
+
+
 def test_model_client_emits_gateway_usage_tail_frame() -> None:
     """Open WebUI 最终 usage 帧必须原样进入结算事件，不能退回本地估算。"""
 

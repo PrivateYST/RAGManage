@@ -184,6 +184,54 @@ class ModelGatewayClient:
                 return digest
         raise ValueError("MODEL_NOT_FOUND")
 
+    async def complete_chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float = 0,
+        max_tokens: int = 128,
+    ) -> dict[str, Any]:
+        """执行受模型白名单约束的短非流式生成，并返回网关用量或本地估算。"""
+        await self._ensure_gateway_key()
+        if not messages or any(not item.get("content", "").strip() for item in messages):
+            raise ValueError("EMPTY_CHAT_MESSAGES")
+        if self.settings.generation_model not in self.settings.allowed_model_names:
+            raise ValueError("MODEL_NOT_ALLOWED")
+        async with self._client(timeout=60) as client:
+            response = await client.post(
+                f"{self.settings.model_gateway_base_url.rstrip('/')}/api/chat/completions",
+                json={
+                    "model": self.settings.generation_model,
+                    "messages": messages,
+                    "stream": False,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                },
+            )
+            response.raise_for_status()
+        payload = response.json()
+        choices = payload.get("choices") if isinstance(payload, dict) else None
+        if not isinstance(choices, list) or not choices:
+            raise ValueError("INVALID_CHAT_RESPONSE")
+        choice = choices[0]
+        message = choice.get("message") if isinstance(choice, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("EMPTY_CHAT_RESPONSE")
+        usage: dict[str, Any] | None = normalize_chat_usage(payload.get("usage"))
+        if usage is None:
+            prompt_tokens = sum(estimate_token_count(item["content"]) for item in messages)
+            completion_tokens = estimate_token_count(content)
+            usage = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+                "usage_source": "estimate",
+            }
+        else:
+            usage["usage_source"] = "gateway"
+        return {"content": content, "usage": usage}
+
     async def stream_chat(
         self,
         messages: list[dict[str, str]],

@@ -240,11 +240,21 @@ class SearchTestRequest(BaseModel):
 
 
 class ConversationCreate(BaseModel):
+    """创建绑定单个知识库的传统会话；自动范围助理使用独立接口。"""
+
     knowledge_base_id: int
     title: str = Field(default="新会话", min_length=1, max_length=200)
 
 
+class AssistantConversationCreate(BaseModel):
+    """创建由 API Key 客户空间自动确定检索范围的助理会话。"""
+
+    title: str = Field(default="新会话", min_length=1, max_length=200)
+
+
 class RunCreate(BaseModel):
+    """提交一个会话问题；运行范围从会话类型和调用 API Key 推导。"""
+
     question: str = Field(min_length=1, max_length=4000)
     request_id: UUID
 
@@ -574,6 +584,10 @@ def _api_key_route_allowed(request: Request) -> bool:
         return request.method in {"GET", "POST"}
     if path.startswith("/api/v1/conversations/"):
         return request.method in {"GET", "POST"}
+    if path == "/api/v1/assistant/conversations":
+        return request.method in {"GET", "POST"}
+    if path.startswith("/api/v1/assistant/conversations/"):
+        return request.method in {"GET", "POST", "DELETE"}
     if path.startswith("/api/v1/runs/"):
         return request.method in {"GET", "POST"}
     return False
@@ -5411,6 +5425,219 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 },
             )
             return result
+        finally:
+            await connection.close()
+
+    @app.get("/api/v1/assistant/conversations")
+    async def list_assistant_conversations(request: Request) -> dict[str, Any]:
+        """列出当前 API Key 所属客户空间中的助理会话，不按知识库拆分。"""
+        context = await _authenticated_user(config, request)
+        tenant_id = context.get("api_key_tenant_id")
+        if tenant_id is None or context.get("api_key_id") is None:
+            raise HTTPException(status_code=403, detail="自动范围助理仅支持公司 API Key")
+        connection = await _database(config)
+        try:
+            rows = await connection.fetch(
+                """
+                SELECT conversation.public_id::text AS id, conversation.tenant_id::text,
+                       'auto'::text AS scope, conversation.title, conversation.status,
+                       conversation.created_at, conversation.updated_at,
+                       count(message.id)::int AS message_count
+                FROM conversations conversation
+                LEFT JOIN messages message ON message.conversation_id = conversation.id
+                  AND message.tenant_id = conversation.tenant_id
+                WHERE conversation.tenant_id = $1 AND conversation.owner_user_id = $2
+                  AND conversation.scope = 'assistant' AND conversation.status = 'active'
+                GROUP BY conversation.id
+                ORDER BY conversation.updated_at DESC, conversation.id DESC
+                LIMIT $3
+                """,
+                int(tenant_id),
+                int(context["user"]["id"]),
+                SESSION_LIST_LIMIT,
+            )
+            return {"items": _rows(rows)}
+        finally:
+            await connection.close()
+
+    @app.post("/api/v1/assistant/conversations", status_code=201)
+    async def create_assistant_conversation(
+        payload: AssistantConversationCreate,
+        request: Request,
+    ) -> dict[str, Any]:
+        """创建不绑定知识库的会话；运行时由 API Key 确定全空间检索范围。"""
+        context = await _authenticated_user(config, request)
+        tenant_id = context.get("api_key_tenant_id")
+        if tenant_id is None or context.get("api_key_id") is None:
+            raise HTTPException(status_code=403, detail="自动范围助理仅支持公司 API Key")
+        connection = await _database(config)
+        try:
+            row = await connection.fetchrow(
+                """
+                INSERT INTO conversations(
+                  tenant_id, knowledge_base_id, scope, owner_user_id, title
+                ) VALUES ($1, NULL, 'assistant', $2, $3)
+                RETURNING public_id::text AS id, tenant_id::text, 'auto'::text AS scope,
+                          title, status,
+                          created_at, updated_at
+                """,
+                int(tenant_id),
+                int(context["user"]["id"]),
+                payload.title,
+            )
+            if row is None:
+                raise HTTPException(status_code=500, detail="助理会话创建失败")
+            return dict(row)
+        finally:
+            await connection.close()
+
+    @app.get("/api/v1/assistant/conversations/{conversation_id}")
+    async def get_assistant_conversation(
+        conversation_id: UUID,
+        request: Request,
+    ) -> dict[str, Any]:
+        """读取助理会话历史及每条回答的引用，权限范围固定为当前 API Key。"""
+        context = await _authenticated_user(config, request)
+        tenant_id = context.get("api_key_tenant_id")
+        api_key_id = context.get("api_key_id")
+        if tenant_id is None or api_key_id is None:
+            raise HTTPException(status_code=403, detail="自动范围助理仅支持公司 API Key")
+        connection = await _database(config)
+        try:
+            conversation = await connection.fetchrow(
+                """
+                SELECT id, public_id::text AS public_id, tenant_id::text, scope,
+                       title, status, created_at, updated_at
+                FROM conversations
+                WHERE public_id = $1 AND tenant_id = $2 AND owner_user_id = $3
+                  AND scope = 'assistant' AND status = 'active'
+                """,
+                conversation_id,
+                int(tenant_id),
+                int(context["user"]["id"]),
+            )
+            if conversation is None:
+                raise HTTPException(status_code=404, detail="助理会话不存在")
+            rows = await connection.fetch(
+                """
+                SELECT message.id::text, message.role, message.content, message.state,
+                       message.created_at, run.id::text AS run_id
+                FROM messages message
+                LEFT JOIN generation_runs run ON run.assistant_message_id = message.id
+                  AND run.tenant_id = message.tenant_id
+                WHERE message.tenant_id = $1 AND message.conversation_id = $2
+                ORDER BY message.created_at, message.id
+                """,
+                int(tenant_id),
+                int(conversation["id"]),
+            )
+            messages = []
+            for row in rows:
+                item = dict(row)
+                item["citations"] = []
+                item["hidden"] = False
+                if item["run_id"] is not None:
+                    snapshot = await load_run_snapshot(
+                        connection,
+                        run_id=int(item["run_id"]),
+                        user_id=int(context["user"]["id"]),
+                        api_key_tenant_id=int(tenant_id),
+                        api_key_id=str(api_key_id),
+                    )
+                    if snapshot is not None:
+                        item["content"] = snapshot["answer"]
+                        item["state"] = snapshot["message_state"]
+                        item["citations"] = snapshot["citations"]
+                        item["run_state"] = snapshot["state"]
+                        item["outcome"] = snapshot["outcome"]
+                        item["hidden"] = snapshot["hidden"]
+                    else:
+                        # 运行快照会校验 API Key 归属；无权读取时不能回退到原始消息正文。
+                        item["content"] = ""
+                        item["state"] = "hidden"
+                        item["hidden"] = True
+                messages.append(item)
+            return {
+                "conversation": {
+                    "id": str(conversation_id),
+                    "tenant_id": str(tenant_id),
+                    "scope": "auto",
+                    "title": conversation["title"],
+                    "status": conversation["status"],
+                    "created_at": conversation["created_at"],
+                    "updated_at": conversation["updated_at"],
+                },
+                "messages": messages,
+            }
+        finally:
+            await connection.close()
+
+    @app.delete("/api/v1/assistant/conversations/{conversation_id}", status_code=204)
+    async def delete_assistant_conversation(
+        conversation_id: UUID,
+        request: Request,
+    ) -> None:
+        """软删除当前 API Key 所有者的助理会话并保留可审计历史。"""
+        context = await _authenticated_user(config, request)
+        tenant_id = context.get("api_key_tenant_id")
+        if tenant_id is None or context.get("api_key_id") is None:
+            raise HTTPException(status_code=403, detail="自动范围助理仅支持公司 API Key")
+        connection = await _database(config)
+        try:
+            result = await connection.execute(
+                """
+                UPDATE conversations SET status = 'deleted', updated_at = now()
+                WHERE public_id = $1 AND tenant_id = $2 AND owner_user_id = $3
+                  AND scope = 'assistant' AND status = 'active'
+                """,
+                conversation_id,
+                int(tenant_id),
+                int(context["user"]["id"]),
+            )
+            if result.endswith(" 0"):
+                raise HTTPException(status_code=404, detail="助理会话不存在")
+        finally:
+            await connection.close()
+
+    @app.post("/api/v1/assistant/conversations/{conversation_id}/runs", status_code=202)
+    async def create_assistant_run(
+        conversation_id: UUID,
+        payload: RunCreate,
+        request: Request,
+    ) -> dict[str, Any]:
+        """提交助理问题；调用方不传知识库，运行器从 API Key 和问题自动分流。"""
+        context = await _authenticated_user(config, request)
+        tenant_id = context.get("api_key_tenant_id")
+        api_key_id = context.get("api_key_id")
+        if tenant_id is None or api_key_id is None:
+            raise HTTPException(status_code=403, detail="自动范围助理仅支持公司 API Key")
+        connection = await _database(config)
+        try:
+            conversation = await connection.fetchrow(
+                """
+                SELECT id, tenant_id, knowledge_base_id, owner_user_id, title, status, scope,
+                       NULL::text AS knowledge_base_name, NULL::bigint AS active_release_id,
+                       NULL::bigint AS active_runtime_id
+                FROM conversations
+                WHERE public_id = $1 AND tenant_id = $2 AND owner_user_id = $3
+                  AND scope = 'assistant' AND status = 'active'
+                """,
+                conversation_id,
+                int(tenant_id),
+                int(context["user"]["id"]),
+            )
+            if conversation is None:
+                raise HTTPException(status_code=404, detail="助理会话不存在")
+            async with connection.transaction():
+                result = await _create_generation_run(
+                    connection,
+                    conversation=conversation,
+                    user_id=int(context["user"]["id"]),
+                    request_id=payload.request_id,
+                    question=payload.question,
+                    api_key_id=str(api_key_id),
+                )
+                return _public_run_payload(result)
         finally:
             await connection.close()
 

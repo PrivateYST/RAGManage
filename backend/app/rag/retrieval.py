@@ -133,7 +133,10 @@ def assemble_evidence(
     evidence_no = 0
     for item in unique:
         section_path = " / ".join(str(part) for part in item["section_path"] if part)
+        knowledge_base_name = str(item.get("knowledge_base_name", "")).strip()
         source = f"{item['document_title']} · v{item['version_no']}"
+        if knowledge_base_name:
+            source = f"{knowledge_base_name} · {source}"
         if section_path:
             source += f" · {section_path}"
         source += f" · {_locator_label(item['locator'])}"

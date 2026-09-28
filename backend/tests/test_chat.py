@@ -10,11 +10,16 @@ from uuid import UUID
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from app.core.config import Settings
-from app.main import _create_generation_run, create_app
+from app.main import _api_key_route_allowed, _create_generation_run, create_app
 from app.rag.chat import (
+    _combined_usage,
     _persist_completed_answer,
+    aggregate_embedding_usage,
+    classify_assistant_question,
+    execute_assistant_scope_search,
     load_run_snapshot,
     sse_event,
     stream_generation_run,
@@ -181,6 +186,35 @@ class FakeCancelledAfterRetrievalConnection(FakeStreamConnection):
         return True
 
 
+class FakeAssistantStreamConnection(FakeStreamConnection):
+    """为助理普通对话流提供独立范围所需的最小数据库响应。"""
+
+    def transaction(self) -> FakeTransaction:
+        """提供最终回答持久化使用的无副作用事务。"""
+        return FakeTransaction()
+
+    async def fetchrow(self, query: str, *args: object) -> dict[str, object] | None:
+        """只领取运行快照；助理会话没有固定知识库 Runtime Profile。"""
+        if "UPDATE generation_runs SET state = 'running'" in query:
+            return await super().fetchrow(query, *args)
+        if "SELECT rp.definition" in query:
+            return None
+        raise AssertionError(f"未处理的 fetchrow 查询：{query}")
+
+    async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+        """该测试的新会话没有历史消息。"""
+        assert "FROM messages" in query
+        return []
+
+    async def fetchval(self, query: str, *args: object) -> int | bool:
+        """依次模拟未取消的运行和最终成功领取。"""
+        if "cancel_requested = false" in query:
+            return 41
+        if "cancel_requested" in query:
+            return False
+        raise AssertionError(f"未处理的 fetchval 查询：{query}")
+
+
 class FakeCompletionConnection:
     """控制最终状态领取结果，用于验证取消与完成并发时不覆盖数据。"""
 
@@ -255,6 +289,488 @@ def test_sse_event_uses_complete_json_frame() -> None:
     assert frame.endswith("\n\n")
     payload = json.loads(frame.split("data: ", 1)[1])
     assert payload == {"text": "分片\n内容", "created_at": "2026-09-18 00:00:00+00:00"}
+
+
+def test_assistant_scope_search_merges_evidence_with_knowledge_base_names(
+    monkeypatch: Any,
+) -> None:
+    """跨库助理必须合并证据并在来源中保留知识库归属。"""
+    connection = AsyncMock()
+    connection.fetch = AsyncMock(
+        return_value=[
+            {
+                "id": 9,
+                "name": "制度库",
+                "active_release_id": 19,
+                "runtime_definition": {"retrieval": {"top_k": 5}},
+            },
+            {
+                "id": 10,
+                "name": "产品库",
+                "active_release_id": 20,
+                "runtime_definition": None,
+            },
+        ]
+    )
+    search_results = [
+        {
+            "state": "completed",
+            "trace_id": "31",
+            "items": [
+                {
+                    "chunk_id": "101",
+                    "content": "制度证据内容",
+                    "document_title": "员工手册.md",
+                    "version_no": 2,
+                    "section_path": ["请假"],
+                    "locator": {"page": 2},
+                    "fused_score": 0.04,
+                }
+            ],
+        },
+        {
+            "state": "completed",
+            "trace_id": "32",
+            "items": [
+                {
+                    "chunk_id": "102",
+                    "content": "产品证据内容",
+                    "document_title": "功能说明.md",
+                    "version_no": 1,
+                    "section_path": ["账号"],
+                    "locator": {"page": 4},
+                    "fused_score": 0.03,
+                }
+            ],
+        },
+    ]
+    usage_operations: list[tuple[str, str]] = []
+
+    async def fake_search(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        """为每个知识库报告估算和实测用量，并返回对应检索结果。"""
+        callback = kwargs["on_embedding_usage"]
+        if callback is not None:
+            await callback(
+                {"prompt_tokens": 20, "completion_tokens": 0, "total_tokens": 20},
+                "shared-embedding",
+            )
+            await callback(
+                {
+                    "prompt_tokens": 5,
+                    "completion_tokens": 0,
+                    "total_tokens": 5,
+                    "usage_source": "gateway",
+                },
+                "shared-embedding",
+            )
+            usage_operations.append((str(kwargs["knowledge_base_id"]), "gateway"))
+        return search_results.pop(0)
+
+    searches = AsyncMock(side_effect=fake_search)
+
+    async def record_usage(
+        usage: Any,
+        model_name: str,
+        operation_id: str,
+    ) -> None:
+        """记录跨库回调传来的用量归属。"""
+        usage_operations.append(
+            (operation_id, str(usage.get("usage_source", "estimate")))
+        )
+    monkeypatch.setattr("app.rag.chat.execute_vector_search", searches)
+
+    result = asyncio.run(
+        execute_assistant_scope_search(
+            connection,  # type: ignore[arg-type]
+            Settings(),
+            tenant_id=7,
+            user_id=3,
+            query="如何申请请假？",
+            message_id=22,
+            on_embedding_usage=record_usage,
+        )
+    )
+
+    assert result["state"] == "completed"
+    assert result["knowledge_base_count"] == 2
+    assert result["trace_ids"] == ["31", "32"]
+    assert [item["evidence_no"] for item in result["items"]] == [1, 2]
+    assert "制度库 · 员工手册.md" in result["context"]
+    assert "产品库 · 功能说明.md" in result["context"]
+    assert [call.kwargs["knowledge_base_id"] for call in searches.await_args_list] == [9, 10]
+    assert usage_operations == [
+        ("9", "estimate"),
+        ("9", "gateway"),
+        ("9", "gateway"),
+        ("10", "estimate"),
+        ("10", "gateway"),
+        ("10", "gateway"),
+    ]
+
+
+def test_embedding_usage_sums_each_knowledge_base_and_keeps_legacy_shape() -> None:
+    """跨库运行按实际调用合计嵌入 Token，单模型审计字段兼容旧格式。"""
+    breakdown = aggregate_embedding_usage(
+        {
+            "9": {
+                "shared-embedding": {
+                    "prompt_tokens": 6,
+                    "completion_tokens": 0,
+                    "total_tokens": 6,
+                    "usage_source": "gateway",
+                }
+            },
+            "10": {
+                "shared-embedding": {
+                    "prompt_tokens": 4,
+                    "completion_tokens": 0,
+                    "total_tokens": 4,
+                    "usage_source": "gateway",
+                }
+            },
+        }
+    )
+    usage, model_usage, model_names = _combined_usage(
+        embedding_usage=None,
+        embedding_model=None,
+        embedding_breakdown=breakdown,
+        generation_usage=None,
+        generation_model=None,
+    )
+
+    assert usage["prompt_tokens"] == 10
+    assert usage["total_tokens"] == 10
+    assert model_usage["embedding"]["model"] == "shared-embedding"
+    assert model_names == "shared-embedding"
+
+
+def test_assistant_question_classifier_falls_back_to_search_on_invalid_json() -> None:
+    """分类模型输出异常时仍检索知识库，避免事实问题被普通回答绕过。"""
+
+    class InvalidRouterClient:
+        """为路由降级测试返回不可解析结果。"""
+
+        class SettingsValue:
+            generation_model = "router-model"
+
+        settings = SettingsValue()
+
+        async def complete_chat(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            temperature: float,
+            max_tokens: int,
+        ) -> dict[str, Any]:
+            """返回无效 JSON，模拟网关模型未遵守路由协议。"""
+            assert temperature == 0
+            assert max_tokens == 96
+            return {
+                "content": "无法判断",
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                    "usage_source": "gateway",
+                },
+            }
+
+    result = asyncio.run(
+        classify_assistant_question(
+            InvalidRouterClient(),  # type: ignore[arg-type]
+            question="我们的年假规定是什么？",
+            history=[],
+        )
+    )
+
+    assert result["retrieve"] is True
+    assert result["query"] == "我们的年假规定是什么？"
+
+
+def test_assistant_general_question_skips_knowledge_base_retrieval(monkeypatch: Any) -> None:
+    """路由判定为一般交流时直接回答，并且不触发单库或跨库检索。"""
+    connection = FakeAssistantStreamConnection()
+    queued = {
+        "id": "41",
+        "tenant_id": "7",
+        "conversation_id": "13",
+        "conversation_scope": "assistant",
+        "state": "queued",
+        "question": "你好",
+    }
+    completed = {**queued, "state": "completed", "answer": "你好，有什么可以帮你？"}
+    build_messages: list[list[dict[str, str]]] = []
+
+    class GeneralAssistantClient:
+        """返回闲聊分类，并提供最终流式回答。"""
+
+        class ClientSettings:
+            generation_model = "assistant-model"
+            generation_max_tokens = 64
+
+        def __init__(self, settings: Settings) -> None:
+            """保留与真实网关客户端一致的构造签名。"""
+            self.settings = self.ClientSettings()
+
+        async def complete_chat(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            temperature: float,
+            max_tokens: int,
+        ) -> dict[str, Any]:
+            """把问候分类为无需检索，并返回路由调用用量。"""
+            return {
+                "content": '{"retrieve": false, "query": ""}',
+                "usage": {
+                    "prompt_tokens": 2,
+                    "completion_tokens": 2,
+                    "total_tokens": 4,
+                    "usage_source": "gateway",
+                },
+            }
+
+        async def stream_chat_events(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            temperature: float,
+            max_tokens: int | None = None,
+        ) -> Any:
+            """记录最终生成上下文，并返回一段可结算的流。"""
+            build_messages.append(messages)
+            yield {"text": "你好，有什么可以帮你？", "usage": None}
+            yield {
+                "text": "",
+                "usage": {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 9,
+                    "total_tokens": 21,
+                },
+            }
+
+    no_retrieval = AsyncMock(side_effect=AssertionError("闲聊不应检索知识库"))
+    settlement = AsyncMock(return_value=True)
+    monkeypatch.setattr("app.rag.chat.asyncpg.connect", AsyncMock(return_value=connection))
+    monkeypatch.setattr(
+        "app.rag.chat.load_run_snapshot", AsyncMock(side_effect=[queued, completed])
+    )
+    monkeypatch.setattr("app.rag.chat.ModelGatewayClient", GeneralAssistantClient)
+    monkeypatch.setattr("app.rag.chat.execute_vector_search", no_retrieval)
+    monkeypatch.setattr("app.rag.chat.execute_assistant_scope_search", no_retrieval)
+    monkeypatch.setattr("app.rag.chat.reserve_api_key_tokens", AsyncMock(return_value=64))
+    monkeypatch.setattr("app.rag.chat.update_api_key_reservation_usage", AsyncMock())
+    monkeypatch.setattr("app.rag.chat.settle_api_key_usage", settlement)
+
+    async def collect() -> list[str]:
+        return [
+            event
+            async for event in stream_generation_run(
+                Settings(database_url="postgresql://test"),
+                run_id=41,
+                user_id=3,
+                api_key_id="8",
+                api_key_tenant_id=7,
+            )
+        ]
+
+    events = asyncio.run(collect())
+
+    no_retrieval.assert_not_awaited()
+    assert any('"mode": "general"' in event for event in events)
+    assert any(event.startswith("event: token") for event in events)
+    assert build_messages[0][-1] == {"role": "user", "content": "你好"}
+    settlement.assert_awaited_once()
+    assert settlement.await_args.kwargs["usage"]["total_tokens"] == 25
+    assert connection.closed
+
+
+def test_assistant_conversation_creation_is_separate_from_knowledge_base_route(
+    monkeypatch: Any,
+) -> None:
+    """助理创建使用独立路由且写入空知识库 ID，旧路由契约仍要求单库 ID。"""
+    connection = AsyncMock()
+    connection.fetchrow = AsyncMock(
+        return_value={
+            "id": "11111111-1111-4111-8111-111111111111",
+            "tenant_id": "7",
+            "scope": "auto",
+            "title": "制度咨询",
+            "status": "active",
+        }
+    )
+    connection.close = AsyncMock()
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(
+            return_value={
+                "user": {"id": "3"},
+                "api_key_id": "8",
+                "api_key_tenant_id": "7",
+            }
+        ),
+    )
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+
+    with TestClient(create_app(Settings())) as client:
+        assistant_response = client.post(
+            "/api/v1/assistant/conversations",
+            json={"title": "制度咨询"},
+        )
+        legacy_response = client.post(
+            "/api/v1/conversations",
+            json={"title": "传统会话"},
+        )
+
+    assert assistant_response.status_code == 201
+    assert assistant_response.json()["scope"] == "auto"
+    insert_query, *insert_args = connection.fetchrow.await_args.args
+    assert "knowledge_base_id, scope" in insert_query
+    assert "VALUES ($1, NULL, 'assistant', $2, $3)" in insert_query
+    assert insert_args == [7, 3, "制度咨询"]
+    assert legacy_response.status_code == 422
+    assert connection.close.await_count == 1
+
+
+def test_api_key_allowlist_keeps_legacy_chat_and_allows_assistant_routes() -> None:
+    """公司 API Key 同时保留旧单库问答并可调用新自动范围助理接口。"""
+
+    def make_request(path: str, method: str) -> Request:
+        """构造仅含路由判断所需字段的 ASGI 请求。"""
+        return Request(
+            {
+                "type": "http",
+                "asgi": {"version": "3.0"},
+                "method": method,
+                "scheme": "http",
+                "path": path,
+                "raw_path": path.encode(),
+                "query_string": b"",
+                "headers": [],
+                "server": ("test", 80),
+                "client": ("test", 1),
+            }
+        )
+
+    assert _api_key_route_allowed(make_request("/api/v1/conversations", "POST"))
+    assert _api_key_route_allowed(make_request("/api/v1/assistant/conversations", "GET"))
+    assert _api_key_route_allowed(
+        make_request("/api/v1/assistant/conversations/abc/runs", "POST")
+    )
+    assert _api_key_route_allowed(
+        make_request("/api/v1/assistant/conversations/abc", "DELETE")
+    )
+    assert not _api_key_route_allowed(
+        make_request("/api/v1/assistant/conversations/abc", "PATCH")
+    )
+
+
+def test_assistant_run_submission_uses_key_scope_without_knowledge_base_id(
+    monkeypatch: Any,
+) -> None:
+    """助理提问只传问题和幂等 ID，运行会话范围来自新接口及当前 API Key。"""
+    connection = AsyncMock()
+    connection.fetchrow = AsyncMock(
+        return_value={
+            "id": 13,
+            "tenant_id": 7,
+            "knowledge_base_id": None,
+            "owner_user_id": 3,
+            "title": "制度咨询",
+            "status": "active",
+            "scope": "assistant",
+            "knowledge_base_name": None,
+            "active_release_id": None,
+            "active_runtime_id": None,
+        }
+    )
+    connection.transaction = lambda: FakeTransaction()
+    connection.close = AsyncMock()
+    run = AsyncMock(return_value={"id": "41", "state": "queued"})
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(
+            return_value={
+                "user": {"id": "3"},
+                "api_key_id": "8",
+                "api_key_tenant_id": "7",
+            }
+        ),
+    )
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+    monkeypatch.setattr("app.main._create_generation_run", run)
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.post(
+            "/api/v1/assistant/conversations/11111111-1111-4111-8111-111111111111/runs",
+            json={
+                "question": "公司的年假政策是什么？",
+                "request_id": "22222222-2222-4222-8222-222222222222",
+            },
+        )
+
+    assert response.status_code == 202
+    assert response.json()["state"] == "queued"
+    assert run.await_args.kwargs["conversation"]["scope"] == "assistant"
+    assert run.await_args.kwargs["conversation"]["knowledge_base_id"] is None
+    assert run.await_args.kwargs["api_key_id"] == "8"
+    assert run.await_args.kwargs["question"] == "公司的年假政策是什么？"
+    assert connection.close.await_count == 1
+
+
+def test_assistant_history_hides_run_content_owned_by_another_api_key(
+    monkeypatch: Any,
+) -> None:
+    """运行快照拒绝当前 Key 时，历史接口不得退回读取数据库中的答案正文。"""
+    connection = AsyncMock()
+    connection.fetchrow = AsyncMock(
+        return_value={
+            "id": 13,
+            "tenant_id": "7",
+            "scope": "assistant",
+            "title": "制度咨询",
+            "status": "active",
+            "created_at": "2026-10-01T00:00:00Z",
+            "updated_at": "2026-10-01T00:00:00Z",
+        }
+    )
+    connection.fetch = AsyncMock(
+        return_value=[
+            {
+                "id": "22",
+                "role": "assistant",
+                "content": "不得透出的旧答案",
+                "state": "complete",
+                "created_at": "2026-10-01T00:00:00Z",
+                "run_id": "41",
+            }
+        ]
+    )
+    connection.close = AsyncMock()
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(
+            return_value={
+                "user": {"id": "3"},
+                "api_key_id": "9",
+                "api_key_tenant_id": "7",
+            }
+        ),
+    )
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+    monkeypatch.setattr("app.main.load_run_snapshot", AsyncMock(return_value=None))
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.get(
+            "/api/v1/assistant/conversations/11111111-1111-4111-8111-111111111111"
+        )
+
+    assert response.status_code == 200
+    message = response.json()["messages"][0]
+    assert message["content"] == ""
+    assert message["hidden"] is True
+    assert message["state"] == "hidden"
+    assert connection.close.await_count == 1
 
 
 def test_create_generation_run_persists_user_assistant_and_release_snapshot() -> None:
