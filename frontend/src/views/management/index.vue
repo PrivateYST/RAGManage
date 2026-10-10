@@ -46,6 +46,7 @@ import {
 } from '@/components'
 import { useAppToast } from '@/composables/useToast'
 import { useAuthStore } from '@/store/auth'
+import { copyText } from '@/utils/clipboard'
 import ApiKeyCreateDialog from '@/views/models/components/ApiKeyCreateDialog/index.vue'
 import ApiKeyRevealDialog from '@/views/models/components/ApiKeyRevealDialog/index.vue'
 
@@ -485,7 +486,7 @@ async function copyTenantKey(tenant: TenantRow): Promise<void> {
   if (!tenant.api_key_id) return
   try {
     const result = await fetchApiKeyPlaintext(tenant.api_key_id)
-    await navigator.clipboard.writeText(result.raw_key)
+    await copyText(result.raw_key)
     toast.success('完整客户 API Key 已复制', '请通过安全渠道发放，页面不会保存明文。')
   } catch (cause) {
     toast.error(cause instanceof Error ? cause.message : '客户 API Key 复制失败')

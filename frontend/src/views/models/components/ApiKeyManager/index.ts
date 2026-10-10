@@ -19,6 +19,7 @@ import {
   updateApiKeyStatus,
 } from '@/api/apiKeys'
 import { useAppToast } from '@/composables/useToast'
+import { copyText } from '@/utils/clipboard'
 
 /** 管理 API Key 页面状态，并串联创建、状态切换、删除、用量查询及用户反馈。 */
 export function useApiKeyManager() {
@@ -177,7 +178,7 @@ export function useApiKeyManager() {
   async function copyKeyIdentifier(item: CompanyApiKey): Promise<void> {
     try {
       const result = await fetchApiKeyPlaintext(item.id)
-      await navigator.clipboard.writeText(result.raw_key)
+      await copyText(result.raw_key)
       toast.success('完整 API Key 已复制', '请通过安全渠道下发。')
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : '完整 API Key 复制失败')

@@ -2,6 +2,7 @@
 import type { ApiKeyRevealDialogProps } from './type'
 import { shallowRef } from 'vue'
 import { useAppToast } from '@/composables/useToast'
+import { copyText } from '@/utils/clipboard'
 
 /** 管理一次性明文的剪贴板写入、并发禁用和失败反馈。 */
 export function useApiKeyRevealDialog(
@@ -16,7 +17,7 @@ export function useApiKeyRevealDialog(
     if (!props.apiKey || copying.value) return
     copying.value = true
     try {
-      await navigator.clipboard.writeText(props.apiKey.raw_key)
+      await copyText(props.apiKey.raw_key)
       emit('copied')
     } catch {
       toast.error('复制失败', '请手动选择并复制 API Key。')
