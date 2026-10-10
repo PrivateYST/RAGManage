@@ -57,7 +57,7 @@ def recover_expired_task_leases() -> None:
 
 def _profile_definition() -> dict[str, Any]:
     return {
-        "parser": "markdown-it/docx/pdfplumber:v1",
+        "parser": "markdown-it/docx/pdfplumber:v2",
         "chunking": {"strategy": "source-block", "max_chars": 1800},
         "preserve_locator": True,
     }

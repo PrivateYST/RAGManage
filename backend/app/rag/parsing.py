@@ -25,6 +25,7 @@ MAX_PDF_STREAMS = 20_000
 MAX_PDF_DECLARED_STREAM_SIZE = 64 * 1024 * 1024
 MAX_PDF_DECLARED_STREAM_TOTAL = 200 * 1024 * 1024
 MAX_PDF_EXTRACTED_TEXT_BYTES = 50 * 1024 * 1024
+MAX_PDF_TABLE_CELLS = 50_000
 _PDF_OBJECT_PATTERN = re.compile(rb"(?:^|\n)\s*\d+\s+\d+\s+obj\b")
 _PDF_LENGTH_PATTERN = re.compile(rb"/Length\s+(\d+)\b")
 
@@ -144,10 +145,40 @@ def _pdf(raw: bytes, result: ParsedDocument) -> None:
                 raise ValueError("PDF_TEXT_LIMIT")
             if len(text.strip()) < 20:
                 result.warnings.append(f"LOW_TEXT_PAGE:{i}")
-            if page.find_tables():
-                result.warnings.append(f"TABLE_LAYOUT_UNVERIFIED:{i}")
+            _validate_pdf_tables(page, i, result)
             if text.strip():
                 result.blocks.append(Block(text, (), {"page": i}))
+
+
+def _validate_pdf_tables(
+    page: pdfplumber.page.Page, page_number: int, result: ParsedDocument
+) -> None:
+    """抽取并校验页面表格，避免把“发现表格”误报成“表格解析失败”。
+
+    表格正文仍与页面文本块一起进入当前切片链路，表格抽取在这里承担完整性
+    校验职责。只有表格识别异常、超过安全边界或没有任何有效单元格时才降级，
+    这样真实表单页不会因为存在表格而被无条件标记为 partial。
+    """
+    try:
+        tables = page.find_tables()
+        cell_count = 0
+        for table in tables:
+            rows = table.extract()
+            cell_count += sum(len(row) for row in rows)
+            if cell_count > MAX_PDF_TABLE_CELLS:
+                result.warnings.append(f"TABLE_TOO_LARGE:{page_number}")
+                return
+            non_empty_cells = sum(
+                1
+                for row in rows
+                for cell in row
+                if cell is not None and str(cell).strip()
+            )
+            if rows and non_empty_cells == 0:
+                result.warnings.append(f"TABLE_EXTRACTION_EMPTY:{page_number}")
+                return
+    except (PDFException, PdfminerException, ValueError, TypeError):
+        result.warnings.append(f"TABLE_EXTRACTION_FAILED:{page_number}")
 
 
 def validate_document_container(raw: bytes, suffix: str) -> None:

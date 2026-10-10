@@ -4,6 +4,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from docx import Document
 
+from app.rag import parsing
 from app.rag.parsing import (
     MAX_DOCX_EXPANDED_SIZE,
     MAX_DOCX_MEMBER_COMPRESSION_RATIO,
@@ -120,6 +121,40 @@ def test_docx_tables_require_review(tmp_path: Path) -> None:
     assert parsed.status == "partial"
     assert parsed.blocks[-1].locator == {"paragraph": 2}
     assert parsed.blocks[-1].section_path == ("Rules",)
+
+
+def test_pdf_table_detection_does_not_mark_successful_tables_partial(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """表格可被抽取时不应再把整份 PDF 误标为部分完成。"""
+    path = tmp_path / "table.pdf"
+    path.write_bytes(b"%PDF-1.7\n")
+
+    class FakeTable:
+        def extract(self):
+            return [["Name", "Value"], ["Age", "18"]]
+
+    class FakePage:
+        def extract_text(self):
+            return "Name Value\nAge 18\nThe table contains validated source text."
+
+        def find_tables(self):
+            return [FakeTable()]
+
+    class FakePdf:
+        pages = [FakePage()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(parsing.pdfplumber, "open", lambda _stream: FakePdf())
+
+    parsed = parse_document(path)
+    assert parsed.status == "complete"
+    assert not any(w.startswith("TABLE_LAYOUT_UNVERIFIED:") for w in parsed.warnings)
 
 
 def test_sample_corpus_preserves_every_source() -> None:
