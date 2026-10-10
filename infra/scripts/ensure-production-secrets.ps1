@@ -12,6 +12,32 @@ function New-RandomSecret {
     return [Convert]::ToHexString($bytes).ToLowerInvariant()
 }
 
+function Get-EnvValue([string]$name) {
+    $match = [regex]::Match($content, "(?m)^$name=(.*)$")
+    if ($match.Success) { return $match.Groups[1].Value }
+    return ''
+}
+
+function Get-LegacyApiKeySecret {
+    # 旧版本未配置显式密钥时使用此派生规则；保持兼容，避免已有客户 Key 无法解密。
+    $databaseUrl = Get-EnvValue 'DATABASE_URL'
+    if ([string]::IsNullOrWhiteSpace($databaseUrl)) {
+        $password = Get-EnvValue 'POSTGRES_PASSWORD'
+        if ([string]::IsNullOrWhiteSpace($password)) {
+            throw 'Cannot derive the legacy API key secret without DATABASE_URL or POSTGRES_PASSWORD.'
+        }
+        $databaseUrl = "postgresql://ragmanage:$password@postgres:5432/ragmanage"
+    }
+    $input = "RAGManage/api-key/$databaseUrl/"
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($input))
+    } finally {
+        $sha256.Dispose()
+    }
+    return [Convert]::ToHexString($hash).ToLowerInvariant()
+}
+
 if (-not (Test-Path -LiteralPath $EnvFile)) {
     throw "Missing production env file: $EnvFile"
 }
@@ -26,7 +52,12 @@ foreach ($name in @('API_KEY_ENCRYPTION_SECRET', 'CSRF_SECRET')) {
         continue
     }
 
-    $line = "$name=$(New-RandomSecret)"
+    $value = if ($name -eq 'API_KEY_ENCRYPTION_SECRET') {
+        Get-LegacyApiKeySecret
+    } else {
+        New-RandomSecret
+    }
+    $line = "$name=$value"
     if ($match.Success) {
         $content = [regex]::Replace($content, $pattern, [System.Text.RegularExpressions.MatchEvaluator]{ param($item) $line }, 1)
     } else {
