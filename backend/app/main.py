@@ -37,6 +37,8 @@ from app.core.auth import (
 from app.core.config import Settings
 from app.core.health import check_dependencies, collect_runtime_metrics
 from app.core.runtime_settings import (
+    LEGACY_MODEL_GATEWAY_SECRET_REF,
+    MODEL_GATEWAY_SECRET_REF,
     load_persisted_model_gateway_key,
     persist_model_gateway_key,
 )
@@ -411,7 +413,7 @@ class ModelEndpointCreate(BaseModel):
     provider: str = Field(default="open_webui", pattern=r"^[a-z0-9_-]{2,40}$")
     endpoint_type: str = Field(pattern=r"^(generation|embedding|reranker)$")
     base_url: str = Field(min_length=8, max_length=300)
-    secret_ref: str = Field(default="env:MODEL_GATEWAY_API_KEY", max_length=200)
+    secret_ref: str = Field(default=MODEL_GATEWAY_SECRET_REF, max_length=200)
     allowed_models: list[str] = Field(min_length=1, max_length=30)
 
     @field_validator("base_url")
@@ -426,9 +428,9 @@ class ModelEndpointCreate(BaseModel):
     @field_validator("secret_ref")
     @classmethod
     def supported_secret_ref(cls, value: str) -> str:
-        if value != "env:MODEL_GATEWAY_API_KEY":
-            raise ValueError("当前仅支持环境变量 MODEL_GATEWAY_API_KEY")
-        return value
+        if value not in {MODEL_GATEWAY_SECRET_REF, LEGACY_MODEL_GATEWAY_SECRET_REF}:
+            raise ValueError("当前仅支持平台模型网关密钥")
+        return MODEL_GATEWAY_SECRET_REF
 
     @field_validator("allowed_models")
     @classmethod
@@ -2662,7 +2664,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         await load_persisted_model_gateway_key(config)
         value = config.model_gateway_api_key.get_secret_value()
-        source = "system" if runtime_gateway_key_configured else "environment"
+        source = "system" if runtime_gateway_key_configured else config.model_gateway_key_source
         return {
             "configured": bool(value),
             "source": source,
@@ -2685,6 +2687,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             int(context["user"]["id"]),
         )
         config.model_gateway_key_refresh_attempted = True
+        config.model_gateway_key_source = "system"
         runtime_gateway_key_configured = True
         value = payload.api_key.get_secret_value()
         return {
@@ -2881,7 +2884,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allowed_models = _json_value(endpoint["allowed_models"], [])
             if payload.model_name not in allowed_models:
                 raise HTTPException(status_code=422, detail="所选模型不在端点白名单中")
-            if endpoint["secret_ref"] != "env:MODEL_GATEWAY_API_KEY":
+            if endpoint["secret_ref"] not in {
+                MODEL_GATEWAY_SECRET_REF,
+                LEGACY_MODEL_GATEWAY_SECRET_REF,
+            }:
                 raise HTTPException(status_code=409, detail="端点密钥引用当前不可用")
             client = ModelGatewayClient(config)
             # 诊断审计只保留耗时、状态和稳定错误码；探测响应与密钥永远不进入日志。
@@ -3191,7 +3197,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             definition = {
                 "provider": "open_webui",
                 "base_url": str(endpoint["base_url"]).rstrip("/"),
-                "secret_ref": "env:MODEL_GATEWAY_API_KEY",
+                "secret_ref": MODEL_GATEWAY_SECRET_REF,
                 "model": payload.model_name,
                 "model_revision": revision,
                 "dimension": dimension,

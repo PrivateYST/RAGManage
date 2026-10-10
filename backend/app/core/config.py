@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     # 避免同一个 Settings 实例在每次模型请求中重复读取平台密钥。
     model_gateway_key_refresh_attempted: bool = False
+    # 仅用于管理页面展示密钥来源，不包含密钥内容。
+    model_gateway_key_source: str = "environment"
 
     @property
     def allowed_model_names(self) -> frozenset[str]:

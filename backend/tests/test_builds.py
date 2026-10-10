@@ -24,7 +24,7 @@ def test_embedding_profile_hash_changes_with_model_revision() -> None:
 
     assert first["provider"] == "open_webui"
     assert first["base_url"] == "http://open-webui.internal"
-    assert first["secret_ref"] == "env:MODEL_GATEWAY_API_KEY"
+    assert first["secret_ref"] == "platform:model_gateway"
     assert "gateway-secret" not in str(first)
     assert first["dimension"] == 1024
     assert profile_hash(first) != profile_hash(second)

@@ -8,12 +8,11 @@
 | --- | --- | --- |
 | `POSTGRES_PASSWORD` / `DATABASE_URL` | PostgreSQL 连接 | 数据库专用账号；禁止复用模型网关密码 |
 | `REDIS_URL` | Redis 连接 | 仅允许内网访问 |
-| `MODEL_GATEWAY_API_KEY` | 模型网关认证 | 只注入 API 与 Worker；轮换后滚动重启 |
 | `API_KEY_ENCRYPTION_SECRET` | 加密客户 Key | 32 字节以上随机值；丢失会导致已存客户 Key 无法解密 |
 | `CSRF_SECRET` | Session CSRF HMAC | 所有 API Worker 必须一致；轮换会使旧 CSRF Cookie 失效 |
 | `COOKIE_SECURE=true` | HTTPS Cookie 保护 | 生产必须开启 |
 
-模型白名单、生成模型和嵌入维度必须与已验收的模型网关配置一致。修改嵌入模型或维度前，应先创建新的 Embedding/Runtime Profile，不得覆盖历史构建所依赖的配置。
+模型网关地址、Key、模型白名单、生成模型和嵌入维度通过平台管理员页面配置并持久化到数据库。修改嵌入模型或维度前，应先创建新的 Embedding/Runtime Profile，不得覆盖历史构建所依赖的配置。
 
 ## 注入与启动
 
@@ -24,7 +23,7 @@
 
 ## 轮换流程
 
-- 模型网关 Key：先在网关创建新 Key，更新 Secret，滚动重启 API/Worker，验证模型健康检查后撤销旧 Key。
+- 模型网关 Key：先在网关创建新 Key，在模型服务页面更新平台网关 Key，验证模型健康检查后撤销旧 Key。
 - 数据库密码：先创建新数据库凭据并更新连接串，短窗口滚动重启，再确认就绪检查和任务 Worker 正常。
 - `API_KEY_ENCRYPTION_SECRET`：除非已有完整客户 Key 解密迁移方案，否则不得直接替换。
 - `CSRF_SECRET`：安排维护窗口轮换，并通知浏览器用户重新登录；旧 Session 不应继续用于写操作。

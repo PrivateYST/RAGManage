@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from app.core.config import Settings
+from app.core.runtime_settings import MODEL_GATEWAY_SECRET_REF
 
 
 def embedding_profile_definition(settings: Settings, model_revision: str) -> dict[str, Any]:
@@ -13,7 +14,7 @@ def embedding_profile_definition(settings: Settings, model_revision: str) -> dic
         "provider": "open_webui",
         "upstream_provider": "ollama",
         "base_url": settings.model_gateway_base_url.rstrip("/"),
-        "secret_ref": "env:MODEL_GATEWAY_API_KEY",
+        "secret_ref": MODEL_GATEWAY_SECRET_REF,
         "model": settings.embedding_model,
         "model_revision": model_revision,
         "dimension": settings.embedding_dimensions,
@@ -37,7 +38,7 @@ def gateway_settings(
     embedding_dimensions: int | None = None,
     generation_model: str | None = None,
 ) -> Settings:
-    """从不可变 Profile 生成一次调用使用的网关配置，密钥仍取自环境变量。"""
+    """从不可变 Profile 生成一次调用使用的网关配置，密钥由平台设置提供。"""
     updates: dict[str, Any] = {
         "model_gateway_base_url": base_url.rstrip("/"),
         "model_gateway_allowed_models": ",".join(allowed_models),

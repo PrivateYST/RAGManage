@@ -84,7 +84,7 @@ export interface EndpointInput {
   provider: string
   endpoint_type: ModelEndpointType
   base_url: string
-  secret_ref: 'env:MODEL_GATEWAY_API_KEY'
+  secret_ref: 'platform:model_gateway'
   allowed_models: string[]
 }
 

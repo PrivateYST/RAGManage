@@ -13,6 +13,9 @@ from app.core.api_keys import decrypt_api_key, encrypt_api_key
 from app.core.config import Settings
 
 MODEL_GATEWAY_SETTING = "model_gateway_api_key"
+# 业务端点引用数据库中的平台密钥；旧环境引用仅用于迁移兼容。
+MODEL_GATEWAY_SECRET_REF = "platform:model_gateway"
+LEGACY_MODEL_GATEWAY_SECRET_REF = "env:MODEL_GATEWAY_API_KEY"
 
 
 async def load_persisted_model_gateway_key(settings: Settings) -> bool:
@@ -34,6 +37,7 @@ async def load_persisted_model_gateway_key(settings: Settings) -> bool:
         settings.model_gateway_api_key = SecretStr(
             decrypt_api_key(str(row["encrypted_value"]), settings.api_key_encryption_secret_value)
         )
+        settings.model_gateway_key_source = "system"
         return True
     except (OSError, asyncpg.PostgresError, ValueError):
         # 本地测试和迁移窗口可能尚未有新表；环境变量仍是可用的回退来源。

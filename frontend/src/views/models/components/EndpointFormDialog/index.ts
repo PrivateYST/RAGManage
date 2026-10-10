@@ -51,7 +51,7 @@ export function useEndpointForm(
       provider: form.provider,
       endpoint_type: form.endpointType,
       base_url: form.baseUrl.trim(),
-      secret_ref: 'env:MODEL_GATEWAY_API_KEY',
+      secret_ref: 'platform:model_gateway',
       allowed_models: allowedModels,
     })
   }

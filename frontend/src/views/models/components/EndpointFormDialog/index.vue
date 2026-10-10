@@ -29,7 +29,7 @@ const { form, error, submit } = useEndpointForm(props, (event, payload) => emit(
           <X :size="16" />
         </button>
       </header>
-      <p class="dialog-description">仅保存密钥引用；API Key 继续由服务端环境变量提供。</p>
+      <p class="dialog-description">端点配置保存到平台；API Key 由“配置全局网关 Key”统一管理。</p>
       <form @submit.prevent="submit">
         <label>端点名称<input v-model="form.name" required maxlength="120" /></label>
         <div class="endpoint-form-grid">
@@ -60,7 +60,7 @@ const { form, error, submit } = useEndpointForm(props, (event, payload) => emit(
             :aria-describedby="error ? 'endpoint-form-error' : undefined"
           />
         </label>
-        <label>密钥引用<input value="env:MODEL_GATEWAY_API_KEY" disabled /></label>
+        <label>密钥来源<input value="平台模型网关密钥" disabled /></label>
         <p
           v-if="error"
           id="endpoint-form-error"

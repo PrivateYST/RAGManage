@@ -38,15 +38,27 @@ Linux/macOS 可手动复制 `.env.example`，为 POSTGRES_PASSWORD 填入随机�
 前端 `/api` 经 Vite 转发到本地 API；浏览器不直接调用公司模型。
 环境页显示真实健康状态，无法连接时提供错误及重试。
 
+### 一键控制（Windows PowerShell）
+
+根目录提供三个独立指令文件，也可以通过 pnpm 快捷命令调用：
+
+```powershell
+pnpm start    # 构建并启动全部服务，执行数据库迁移
+pnpm pause    # 暂停全部容器，保留容器和数据卷
+pnpm restart  # 重启全部容器，重新执行数据库迁移
+```
+
+对应的脚本文件是 `infra/scripts/start.ps1`、`infra/scripts/pause.ps1` 和
+`infra/scripts/restart.ps1`。执行前请先启动 Docker Desktop 并切换到 Linux containers。
+
 ### 模型网关与 API Key
 
-API Key 从 Open WebUI 的“账号 → API 密钥”创建，写入本机或部署环境的
-`MODEL_GATEWAY_API_KEY`。部署可以在暂未拿到密钥时先启动，API 和 Worker 会在模型操作时
-以 `MODEL_GATEWAY_API_KEY_NOT_CONFIGURED` 明确失败；配置密钥后才会使用
-`Authorization: Bearer` 调用网关；
+API Key 从 Open WebUI 的“账号 → API 密钥”创建，然后登录 RAGManage 平台，在“模型服务”页面的
+“配置全局网关 Key”中保存。Key 会使用 `API_KEY_ENCRYPTION_SECRET` 加密写入业务数据库，API 和 Worker
+启动后从数据库读取，不需要为每台部署服务器重复设置模型 Key；未完成配置时，模型操作会以
+`MODEL_GATEWAY_API_KEY_NOT_CONFIGURED` 明确失败。配置完成后才会使用 `Authorization: Bearer` 调用网关；
 嵌入调用 OpenAI 兼容的 `/api/embeddings`，模型摘要通过受认证的
-`/ollama/api/tags` 获取。`.env` 中 `MODEL_GATEWAY_ALLOWED_MODELS` 是业务侧白名单。
-业务数据库仅保存 `env:MODEL_GATEWAY_API_KEY` 这一引用，密钥明文不进入数据库和 Git。
+`/ollama/api/tags` 获取。模型端点地址和业务侧白名单在“模型服务”页面维护；密钥明文不进入 Git。
 
 ### 后端热更新
 
