@@ -8,8 +8,13 @@ $ErrorActionPreference = 'Stop'
 function New-RandomSecret {
     # 生成 32 字节十六进制密钥；脚本只在配置缺失时调用，避免轮换已用于解密的密钥。
     $bytes = [byte[]]::new(32)
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
-    return [Convert]::ToHexString($bytes).ToLowerInvariant()
+    $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $generator.GetBytes($bytes)
+    } finally {
+        $generator.Dispose()
+    }
+    return [BitConverter]::ToString($bytes).Replace('-', '').ToLowerInvariant()
 }
 
 function Get-EnvValue([string]$name) {
@@ -35,7 +40,7 @@ function Get-LegacyApiKeySecret {
     } finally {
         $sha256.Dispose()
     }
-    return [Convert]::ToHexString($hash).ToLowerInvariant()
+    return [BitConverter]::ToString($hash).Replace('-', '').ToLowerInvariant()
 }
 
 if (-not (Test-Path -LiteralPath $EnvFile)) {
