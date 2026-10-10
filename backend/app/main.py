@@ -525,6 +525,13 @@ class ApiKeyStatusPatch(BaseModel):
     status: str = Field(pattern=r"^(active|disabled)$")
 
 
+class ApiKeyQuotaPatch(BaseModel):
+    """平台管理员按增减方向调整已有客户 Key 的 Token 总额度。"""
+
+    direction: str = Field(pattern=r"^(add|subtract)$")
+    amount: int = Field(gt=0, le=10_000_000_000)
+
+
 class IngestionProfileCreate(BaseModel):
     knowledge_base_id: int
     max_chars: int = Field(default=1800, ge=400, le=8000)
@@ -2467,6 +2474,86 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     target_type="api_key",
                     target_id=row["id"],
                     summary={"name": row["name"], "status": payload.status},
+                )
+            return dict(row)
+        finally:
+            await connection.close()
+
+    @app.patch("/api/v1/api-keys/{api_key_id}/quota")
+    async def update_api_key_quota(
+        api_key_id: int,
+        payload: ApiKeyQuotaPatch,
+        request: Request,
+    ) -> dict[str, Any]:
+        """平台管理员按 Token 数量调整 Key 总额度，并保留用量流水和审计记录。
+
+        先锁定额度行读取最新的已用量和并发预留量；减少总额度时不能低于二者之和，
+        这样进行中的请求不会因管理操作而形成负余额或突破现有预留。服务端基于锁定后的
+        当前总额度应用增减值，避免两个管理员同时操作时后提交者覆盖前一个人的调整。
+        """
+        context = await _authenticated_user(config, request)
+        _require_platform_admin(context)
+        connection = await _database(config)
+        try:
+            async with connection.transaction():
+                current = await connection.fetchrow(
+                    """
+                    SELECT id::text, tenant_id::text, name, token_limit, token_used,
+                           token_reserved
+                    FROM api_keys
+                    WHERE id = $1 AND deleted_at IS NULL
+                    FOR UPDATE
+                    """,
+                    api_key_id,
+                )
+                if current is None:
+                    raise HTTPException(status_code=404, detail="API Key 不存在或已删除")
+                minimum_limit = int(current["token_used"]) + int(current["token_reserved"])
+                current_limit = int(current["token_limit"])
+                next_limit = current_limit + (
+                    payload.amount if payload.direction == "add" else -payload.amount
+                )
+                if next_limit <= 0:
+                    raise HTTPException(status_code=409, detail="API Key 总额度必须大于 0")
+                if next_limit > 10_000_000_000:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="调整后的总额度不能超过 10,000,000,000 Token",
+                    )
+                if next_limit < minimum_limit:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="新总额度不能低于已用 Token 与预留 Token 之和",
+                    )
+                row = await connection.fetchrow(
+                    """
+                    UPDATE api_keys
+                    SET token_limit = $2
+                    WHERE id = $1 AND deleted_at IS NULL
+                    RETURNING id::text, tenant_id::text, name, token_limit, token_used,
+                              token_reserved,
+                              GREATEST(0, token_limit - token_used - token_reserved)
+                                AS token_remaining
+                    """,
+                    api_key_id,
+                    next_limit,
+                )
+                if row is None:
+                    raise HTTPException(status_code=404, detail="API Key 不存在或已删除")
+                await write_audit_event(
+                    connection,
+                    tenant_id=int(row["tenant_id"]),
+                    actor_id=int(context["user"]["id"]),
+                    action="api_key.quota.update",
+                    target_type="api_key",
+                    target_id=row["id"],
+                    summary={
+                        "name": row["name"],
+                        "previous_token_limit": current_limit,
+                        "direction": payload.direction,
+                        "amount": payload.amount,
+                        "token_limit": next_limit,
+                    },
                 )
             return dict(row)
         finally:

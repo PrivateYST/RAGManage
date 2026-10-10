@@ -10,6 +10,7 @@ const apiMocks = vi.hoisted(() => ({
   createApiKey: vi.fn(),
   fetchApiKeys: vi.fn(),
   fetchApiKeyUsage: vi.fn(),
+  updateApiKeyQuota: vi.fn(),
   deleteApiKey: vi.fn(),
   updateApiKeyStatus: vi.fn(),
   fetchTenants: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock('@/api/apiKeys', () => ({
   createApiKey: apiMocks.createApiKey,
   fetchApiKeys: apiMocks.fetchApiKeys,
   fetchApiKeyUsage: apiMocks.fetchApiKeyUsage,
+  updateApiKeyQuota: apiMocks.updateApiKeyQuota,
   deleteApiKey: apiMocks.deleteApiKey,
   updateApiKeyStatus: apiMocks.updateApiKeyStatus,
 }))
@@ -81,6 +83,20 @@ describe('api key manager', () => {
     apiMocks.createApiKey.mockResolvedValue(createdKey)
     apiMocks.deleteApiKey.mockResolvedValue({ id: '9', name: '生产 Key', status: 'revoked' })
     apiMocks.updateApiKeyStatus.mockResolvedValue({ id: '9', name: '生产 Key', status: 'disabled' })
+    apiMocks.updateApiKeyQuota.mockImplementation(
+      async (_id: string, adjustment: { direction: 'add' | 'subtract'; amount: number }) => {
+        const tokenLimit =
+          1000 + (adjustment.direction === 'add' ? adjustment.amount : -adjustment.amount)
+        return {
+          id: '9',
+          name: '生产 Key',
+          token_limit: tokenLimit,
+          token_used: 34,
+          token_reserved: 0,
+          token_remaining: tokenLimit - 34,
+        }
+      },
+    )
     apiMocks.fetchApiKeyUsage.mockResolvedValue({
       summary: {
         request_count: 350,
@@ -201,6 +217,59 @@ describe('api key manager', () => {
     await flushPromises()
 
     expect(apiMocks.updateApiKeyStatus).toHaveBeenCalledWith('9', 'disabled')
+  })
+
+  it('increases a key quota and immediately updates the displayed balance', async () => {
+    const wrapper = mount(ApiKeyManager)
+    await flushPromises()
+    const quotaButton = wrapper.findAll('button').find((button) => button.text().includes('额度'))
+    await quotaButton?.trigger('click')
+
+    const form = document.body.querySelector<HTMLFormElement>('form')
+    const input = form?.querySelector<HTMLInputElement>('input')
+    if (!input || !form) throw new Error('额度调整表单未打开')
+    input.value = '2000'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(apiMocks.updateApiKeyQuota).toHaveBeenCalledWith('9', { direction: 'add', amount: 2000 })
+    expect(wrapper.text()).toContain('3,000')
+    expect(wrapper.text()).toContain('2,966')
+    expect(document.body.textContent).not.toContain('保存额度')
+  })
+
+  it('rejects reducing more than the available balance and accepts the exact limit', async () => {
+    const wrapper = mount(ApiKeyManager)
+    await flushPromises()
+    const quotaButton = wrapper.findAll('button').find((button) => button.text().includes('额度'))
+    await quotaButton?.trigger('click')
+
+    const form = document.body.querySelector<HTMLFormElement>('form')
+    const select = form?.querySelector<HTMLSelectElement>('select')
+    const input = form?.querySelector<HTMLInputElement>('input')
+    if (!form || !select || !input) throw new Error('额度调整表单未打开')
+    select.value = 'subtract'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    input.value = '967'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(apiMocks.updateApiKeyQuota).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('减少数量不能超过当前可用余额')
+
+    input.value = '966'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(apiMocks.updateApiKeyQuota).toHaveBeenCalledWith('9', {
+      direction: 'subtract',
+      amount: 966,
+    })
+    expect(wrapper.text()).toContain('34')
+    expect(wrapper.text()).toContain('0')
   })
 
   it('keeps the newest key selected when an older usage request resolves last', async () => {

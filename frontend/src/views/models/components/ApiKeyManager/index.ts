@@ -1,7 +1,8 @@
-/** API Key 管理容器的异步编排：加载租户、发放 Key、状态切换、删除和查询流水。 */
+/** API Key 管理容器的异步编排：加载租户、发放与调额、状态切换、删除和查询流水。 */
 import type { ApiKeyCreatePayload } from '../ApiKeyCreateDialog/type'
 import type { TenantRow } from '@/api/admin'
 import type {
+  ApiKeyQuotaAdjustment,
   ApiKeyUsageResponse,
   ApiKeyUsageRow,
   ApiKeyUsageSummary,
@@ -16,6 +17,7 @@ import {
   fetchApiKeyPlaintext,
   fetchApiKeys,
   fetchApiKeyUsage,
+  updateApiKeyQuota,
   updateApiKeyStatus,
 } from '@/api/apiKeys'
 import { useAppToast } from '@/composables/useToast'
@@ -42,10 +44,49 @@ export function useApiKeyManager() {
   const revealedKey = shallowRef<CreatedApiKey | null>(null)
   const pendingDelete = shallowRef<CompanyApiKey | null>(null)
   const pendingStatus = shallowRef<CompanyApiKey | null>(null)
+  const quotaTarget = shallowRef<CompanyApiKey | null>(null)
+  const quotaOpen = shallowRef(false)
 
   /** 打开创建弹窗，表单状态由子组件在打开时重置。 */
   function openCreate(): void {
     createOpen.value = true
+  }
+
+  /** 选择目标 Key 并打开额度调整弹窗，最终边界仍由服务端实时校验。 */
+  function openQuota(item: CompanyApiKey): void {
+    quotaTarget.value = item
+    quotaOpen.value = true
+  }
+
+  /** 关闭额度弹窗并清理目标，避免下次打开时短暂显示旧客户信息。 */
+  function closeQuota(): void {
+    if (busyId.value) return
+    quotaOpen.value = false
+    quotaTarget.value = null
+  }
+
+  /** 保存新的总额度并用接口返回的实时余额更新表格，保留历史用量选择。 */
+  async function submitQuota(adjustment: ApiKeyQuotaAdjustment): Promise<void> {
+    const item = quotaTarget.value
+    if (!item) return
+    busyId.value = item.id
+    try {
+      const updated = await updateApiKeyQuota(item.id, adjustment)
+      const updateItem = (candidate: CompanyApiKey): CompanyApiKey =>
+        candidate.id === item.id ? { ...candidate, ...updated } : candidate
+      items.value = items.value.map(updateItem)
+      if (selected.value?.id === item.id) selected.value = updateItem(selected.value)
+      quotaOpen.value = false
+      quotaTarget.value = null
+      toast.success(
+        'API Key 额度已调整',
+        `当前总额度 ${updated.token_limit.toLocaleString()} Token`,
+      )
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'API Key 额度调整失败')
+    } finally {
+      busyId.value = ''
+    }
   }
 
   /** 并行加载 Key 和可发放的启用客户空间。 */
@@ -209,8 +250,13 @@ export function useApiKeyManager() {
     revealedKey,
     pendingDelete,
     pendingStatus,
+    quotaTarget,
+    quotaOpen,
     load,
     openCreate,
+    openQuota,
+    closeQuota,
+    submitQuota,
     submit,
     requestDelete,
     cancelDelete,

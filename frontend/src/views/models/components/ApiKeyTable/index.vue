@@ -3,7 +3,7 @@
 import type { ApiKeyTableProps } from './type'
 import type { CompanyApiKey } from '@/api/apiKeys'
 import type { AppTableColumn } from '@/components'
-import { AppTable, Copy, History, KeyRound, Power, Trash2 } from '@/components'
+import { AppTable, Copy, History, KeyRound, Power, SlidersHorizontal, Trash2 } from '@/components'
 import { apiKeyStatusLabel, formatApiKeyDate } from './index'
 import './index.scss'
 
@@ -13,6 +13,7 @@ const emit = defineEmits<{
   delete: [apiKey: CompanyApiKey]
   toggleStatus: [apiKey: CompanyApiKey]
   copy: [apiKey: CompanyApiKey]
+  quota: [apiKey: CompanyApiKey]
 }>()
 function statusText(status: CompanyApiKey['status']): string {
   return apiKeyStatusLabel[status]
@@ -48,7 +49,7 @@ const columns: AppTableColumn<CompanyApiKey>[] = [
         row-key="id"
         :loading="loading"
         empty-text="还没有发放 API Key"
-        class="w-full min-w-[980px] text-left"
+        class="w-full min-w-[1080px] text-left"
       >
         <template #cell-client="{ row: item }">
           <strong class="block text-xs font-semibold text-foreground">{{
@@ -117,6 +118,15 @@ const columns: AppTableColumn<CompanyApiKey>[] = [
         </template>
         <template #cell-actions="{ row: item }">
           <div class="api-key-action-list flex flex-nowrap items-center gap-[6px]">
+            <button
+              class="inline-flex h-[28px] shrink-0 items-center gap-[4px] rounded-md border border-border bg-background px-[8px] text-[11px] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-50"
+              type="button"
+              title="增加或减少 Token 额度"
+              :disabled="busyId === item.id"
+              @click="emit('quota', item)"
+            >
+              <SlidersHorizontal :size="13" />额度
+            </button>
             <button
               class="inline-flex h-[28px] shrink-0 items-center gap-[4px] rounded-md border border-border bg-background px-[8px] text-[11px] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               type="button"

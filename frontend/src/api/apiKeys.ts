@@ -2,6 +2,13 @@
 import { apiRequest } from './client'
 
 export type ApiKeyStatus = 'active' | 'disabled' | 'revoked' | 'expired'
+export type ApiKeyQuotaDirection = 'add' | 'subtract'
+
+/** 对指定 Key 增加或扣减的 Token 数量；服务端按锁定后的额度原子应用差额。 */
+export interface ApiKeyQuotaAdjustment {
+  direction: ApiKeyQuotaDirection
+  amount: number
+}
 
 /** 管理列表中的公司 API Key，不包含明文凭据。 */
 export interface CompanyApiKey {
@@ -107,6 +114,22 @@ export function updateApiKeyStatus(
   return apiRequest(`/api/v1/api-keys/${encodeURIComponent(id)}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
+  })
+}
+
+/** 设置指定 Key 的 Token 总额度；服务端负责依据实时已用量和并发预留校验下限。 */
+export function updateApiKeyQuota(
+  id: string,
+  adjustment: ApiKeyQuotaAdjustment,
+): Promise<
+  Pick<
+    CompanyApiKey,
+    'id' | 'name' | 'token_limit' | 'token_used' | 'token_reserved' | 'token_remaining'
+  >
+> {
+  return apiRequest(`/api/v1/api-keys/${encodeURIComponent(id)}/quota`, {
+    method: 'PATCH',
+    body: JSON.stringify(adjustment),
   })
 }
 

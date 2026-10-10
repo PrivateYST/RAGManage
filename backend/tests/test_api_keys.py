@@ -257,6 +257,64 @@ class FakeLifecycleConnection:
         self.closed = True
 
 
+class FakeQuotaConnection:
+    """模拟额度调整时的行锁、额度更新和事务审计边界。"""
+
+    def __init__(
+        self,
+        *,
+        token_limit: int = 1000,
+        token_used: int = 300,
+        token_reserved: int = 50,
+        found: bool = True,
+    ) -> None:
+        """设置当前额度状态，允许测试安全下限与不存在的 Key。"""
+        self.token_limit = token_limit
+        self.token_used = token_used
+        self.token_reserved = token_reserved
+        self.found = found
+        self.fetchrow_calls: list[tuple[Any, ...]] = []
+        self.execute_calls: list[tuple[Any, ...]] = []
+        self.closed = False
+
+    def transaction(self) -> FakeTransaction:
+        """返回异步事务上下文，确保审计和额度变更同生共灭。"""
+        return FakeTransaction()
+
+    async def fetchrow(self, query: str, *args: object) -> dict[str, object] | None:
+        """返回锁定前额度快照或更新后的服务端余额。"""
+        self.fetchrow_calls.append((query, *args))
+        if not self.found:
+            return None
+        if "FOR UPDATE" in query:
+            return {
+                "id": "9",
+                "tenant_id": "3",
+                "name": "生产 Key",
+                "token_limit": self.token_limit,
+                "token_used": self.token_used,
+                "token_reserved": self.token_reserved,
+            }
+        self.token_limit = int(args[1])
+        return {
+            "id": "9",
+            "tenant_id": "3",
+            "name": "生产 Key",
+            "token_limit": self.token_limit,
+            "token_used": self.token_used,
+            "token_reserved": self.token_reserved,
+            "token_remaining": self.token_limit - self.token_used - self.token_reserved,
+        }
+
+    async def execute(self, query: str, *args: object) -> None:
+        """记录额度审计事件，供检查变更范围与脱敏摘要。"""
+        self.execute_calls.append((query, *args))
+
+    async def close(self) -> None:
+        """标记额度管理接口已关闭数据库连接。"""
+        self.closed = True
+
+
 def test_generated_key_only_persists_hash_and_masked_prefix() -> None:
     """随机明文仅返回给创建者，哈希和脱敏前缀不能还原可调用凭据。"""
     raw_key, prefix, key_hash = generate_api_key()
@@ -314,6 +372,171 @@ def test_platform_admin_can_toggle_api_key_status_and_audit(monkeypatch: Any) ->
     assert response.json()["status"] == "disabled"
     assert any("api_key.status.update" in str(call) for call in connection.execute_calls)
     assert connection.closed
+
+
+@pytest.mark.parametrize(
+    ("direction", "amount", "expected_limit"),
+    [("add", 1000, 2000), ("subtract", 600, 400)],
+)
+def test_platform_admin_can_increase_or_reduce_api_key_quota(
+    monkeypatch: Any,
+    direction: str,
+    amount: int,
+    expected_limit: int,
+) -> None:
+    """管理员可增加额度或减少未被已用和预留 Token 占用的额度。"""
+    connection = FakeQuotaConnection()
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(return_value={"user": {"id": "7", "platform_role": "platform_admin"}}),
+    )
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.patch(
+            "/api/v1/api-keys/9/quota",
+            json={"direction": direction, "amount": amount},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["token_limit"] == expected_limit
+    assert response.json()["token_remaining"] == expected_limit - 350
+    assert "FOR UPDATE" in connection.fetchrow_calls[0][0]
+    assert connection.fetchrow_calls[1][1:] == (9, expected_limit)
+    assert any("api_key.quota.update" in str(call) for call in connection.execute_calls)
+    assert connection.closed
+
+
+def test_api_key_quota_cannot_be_reduced_below_used_and_reserved_tokens(
+    monkeypatch: Any,
+) -> None:
+    """额度下调保留已消费及并发预留余额，冲突时不更新也不写审计。"""
+    connection = FakeQuotaConnection()
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(return_value={"user": {"id": "7", "platform_role": "platform_admin"}}),
+    )
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.patch(
+            "/api/v1/api-keys/9/quota",
+            json={"direction": "subtract", "amount": 651},
+        )
+
+    assert response.status_code == 409
+    assert "已用 Token 与预留 Token 之和" in response.json()["detail"]
+    assert len(connection.fetchrow_calls) == 1
+    assert connection.execute_calls == []
+    assert connection.closed
+
+
+@pytest.mark.parametrize(
+    ("token_limit", "direction", "amount"),
+    [(1000, "subtract", 1000), (10_000_000_000, "add", 1)],
+)
+def test_api_key_quota_respects_positive_and_global_limit(
+    monkeypatch: Any,
+    token_limit: int,
+    direction: str,
+    amount: int,
+) -> None:
+    """动态额度变化后仍必须保持正余额上限且不能超过全局 Token 上限。"""
+    connection = FakeQuotaConnection(
+        token_limit=token_limit,
+        token_used=0,
+        token_reserved=0,
+    )
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(return_value={"user": {"id": "7", "platform_role": "platform_admin"}}),
+    )
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.patch(
+            "/api/v1/api-keys/9/quota",
+            json={"direction": direction, "amount": amount},
+        )
+
+    assert response.status_code == 409
+    assert len(connection.fetchrow_calls) == 1
+    assert connection.execute_calls == []
+    assert connection.closed
+
+
+def test_consecutive_api_key_top_ups_apply_as_atomic_deltas(monkeypatch: Any) -> None:
+    """连续充值按每次差额累加，避免第二个管理员操作覆盖第一个结果。"""
+    connection = FakeQuotaConnection()
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(return_value={"user": {"id": "7", "platform_role": "platform_admin"}}),
+    )
+    monkeypatch.setattr("app.main._database", AsyncMock(return_value=connection))
+
+    with TestClient(create_app(Settings())) as client:
+        first = client.patch(
+            "/api/v1/api-keys/9/quota",
+            json={"direction": "add", "amount": 100},
+        )
+        second = client.patch(
+            "/api/v1/api-keys/9/quota",
+            json={"direction": "add", "amount": 100},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["token_limit"] == 1100
+    assert second.json()["token_limit"] == 1200
+    assert connection.closed
+
+
+def test_api_key_quota_patch_requires_platform_admin(monkeypatch: Any) -> None:
+    """额度管理接口拒绝普通平台用户，并在权限失败前不连接数据库。"""
+    database = AsyncMock()
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(return_value={"user": {"id": "8", "platform_role": "tenant_admin"}}),
+    )
+    monkeypatch.setattr("app.main._database", database)
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.patch(
+            "/api/v1/api-keys/9/quota",
+            json={"direction": "add", "amount": 1000},
+        )
+
+    assert response.status_code == 403
+    database.assert_not_awaited()
+
+
+def test_api_key_quota_rejects_invalid_direction_or_amount(monkeypatch: Any) -> None:
+    """额度差额只能选择增加/减少且必须是 1 到 100 亿之间的正整数。"""
+    database = AsyncMock()
+    monkeypatch.setattr(
+        "app.main._authenticated_user",
+        AsyncMock(return_value={"user": {"id": "7", "platform_role": "platform_admin"}}),
+    )
+    monkeypatch.setattr("app.main._database", database)
+
+    with TestClient(create_app(Settings())) as client:
+        invalid_direction = client.patch(
+            "/api/v1/api-keys/9/quota",
+            json={"direction": "reset", "amount": 1},
+        )
+        zero = client.patch(
+            "/api/v1/api-keys/9/quota",
+            json={"direction": "add", "amount": 0},
+        )
+        too_large = client.patch(
+            "/api/v1/api-keys/9/quota",
+            json={"direction": "add", "amount": 10_000_000_001},
+        )
+
+    assert invalid_direction.status_code == 422
+    assert zero.status_code == 422
+    assert too_large.status_code == 422
+    database.assert_not_awaited()
 
 
 def test_platform_admin_soft_deletes_api_key_and_preserves_history(monkeypatch: Any) -> None:

@@ -1,7 +1,8 @@
-<!-- 公司 API Key 管理工作区：组合创建、列表和 Token 用量三个职责明确的子组件。 -->
+<!-- 公司 API Key 管理工作区：组合创建、额度调整、列表和 Token 用量等职责明确的子组件。 -->
 <script setup lang="ts">
 import { AppConfirmDialog, KeyRound, Plus, RefreshCw } from '@/components'
 import ApiKeyCreateDialog from '../ApiKeyCreateDialog/index.vue'
+import ApiKeyQuotaDialog from '../ApiKeyQuotaDialog/index.vue'
 import ApiKeyRevealDialog from '../ApiKeyRevealDialog/index.vue'
 import ApiKeyTable from '../ApiKeyTable/index.vue'
 import ApiKeyUsagePanel from '../ApiKeyUsagePanel/index.vue'
@@ -25,8 +26,13 @@ const {
   revealedKey,
   pendingDelete,
   pendingStatus,
+  quotaTarget,
+  quotaOpen,
   load,
   openCreate,
+  openQuota,
+  closeQuota,
+  submitQuota,
   submit,
   requestDelete,
   cancelDelete,
@@ -71,6 +77,7 @@ const {
       @delete="requestDelete"
       @toggle-status="toggleStatus"
       @copy="copyKeyIdentifier"
+      @quota="openQuota"
     />
     <ApiKeyUsagePanel
       :api-key="selected"
@@ -87,6 +94,13 @@ const {
       :submitting="submitting"
       @close="createOpen = false"
       @submit="submit"
+    />
+    <ApiKeyQuotaDialog
+      :open="quotaOpen"
+      :api-key="quotaTarget"
+      :busy="Boolean(quotaTarget && busyId === quotaTarget.id)"
+      @close="closeQuota"
+      @submit="submitQuota"
     />
     <ApiKeyRevealDialog
       :api-key="revealedKey"
