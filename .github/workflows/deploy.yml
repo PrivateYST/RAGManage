@@ -31,6 +31,9 @@ jobs:
           $serverEnv = 'D:\services\ragmanage\.env'
           if (-not (Test-Path $serverEnv)) { throw "Missing production env file: $serverEnv" }
           Set-Location $deployRoot
+          # First deployment may have an older env file; fill only missing stable secrets before Compose interpolation.
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $deployRoot 'infra\scripts\ensure-production-secrets.ps1') -EnvFile $serverEnv
+          if ($LASTEXITCODE -ne 0) { throw 'Production secret initialization failed.' }
           # Fail before building images when the runner service cannot reach Docker Desktop.
           # The Docker named pipe is protected by the docker-users group on Windows.
           # Use cmd redirection so Docker's non-fatal capability warnings do not become
