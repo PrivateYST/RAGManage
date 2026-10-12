@@ -171,7 +171,14 @@ export function createUser(payload: UserCreatePayload): Promise<UserRow> {
 
 export function updateUser(
   id: string,
-  payload: { status?: 'active' | 'disabled'; password?: string; display_name?: string },
+  payload: {
+    status?: 'active' | 'disabled'
+    password?: string
+    display_name?: string
+    platform_role_code?: string | null
+    tenant_id?: number | null
+    tenant_role_code?: string | null
+  },
 ): Promise<UserRow> {
   return apiRequest(`/api/v1/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
 }

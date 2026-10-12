@@ -2,17 +2,20 @@
 <script setup lang="ts">
 import type { TenantRow, UserRow } from '@/api/admin'
 import type { AppTableColumn } from '@/components'
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, shallowRef } from 'vue'
 import { fetchTenants } from '@/api/admin'
 import { AppConfirmDialog, Plus } from '@/components'
 import { useAppToast } from '@/composables/useToast'
 import CreateUserDialog from './components/CreateUserDialog/index.vue'
+import EditUserDialog from './components/EditUserDialog/index.vue'
 import UserDetailDialog from './components/UserDetailDialog/index.vue'
 import { useUserManagementPage } from './index'
 
 const toast = useAppToast()
 const tenants = ref<TenantRow[]>([])
 const showCreateDialog = ref(false)
+const editDialogOpen = ref(false)
+const editingUser = shallowRef<UserRow | null>(null)
 const {
   users,
   loading,
@@ -88,9 +91,15 @@ onMounted(() => {
         </template>
         <template #cell-role="{ row }">{{ row.platform_role || '空间成员' }}</template>
         <template #cell-status="{ row }">
-          <span class="status-pill" :class="row.status === 'active' ? 'published' : 'disabled'">
+          <button
+            class="status-pill cursor-pointer border-0"
+            :class="row.status === 'active' ? 'published' : 'disabled'"
+            type="button"
+            :aria-label="row.status === 'active' ? `停用${row.display_name}` : `启用${row.display_name}`"
+            @click="toggleStatus(row)"
+          >
             {{ row.status === 'active' ? '正常' : '停用' }}
-          </span>
+          </button>
         </template>
         <template #cell-lastLogin="{ row }">
           {{ row.last_login_at ? new Date(row.last_login_at).toLocaleString('zh-CN') : '尚未登录' }}
@@ -98,9 +107,7 @@ onMounted(() => {
         <template #cell-actions="{ row }">
           <div class="user-row-actions">
             <button class="table-action" type="button" @click="openDetails(row)">详情</button>
-            <button class="table-action" type="button" @click="toggleStatus(row)">
-              {{ row.status === 'active' ? '停用' : '启用' }}
-            </button>
+            <button class="table-action" type="button" @click="(editingUser = row, editDialogOpen = true)">编辑</button>
           </div>
         </template>
       </AppTable>
@@ -108,6 +115,7 @@ onMounted(() => {
   </section>
 
   <CreateUserDialog v-model:open="showCreateDialog" :tenants="tenants" @created="handleCreated" />
+  <EditUserDialog v-model:open="editDialogOpen" :user="editingUser" :tenants="tenants" @saved="loadUsers" />
   <UserDetailDialog :open="detailOpen" :user="selectedUser" @close="detailOpen = false" />
   <AppConfirmDialog
     :open="Boolean(pendingStatus)"

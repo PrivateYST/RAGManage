@@ -13,7 +13,7 @@ const { form, saving, resetForm, submit } = useCreateUserDialog()
 async function submitUser(): Promise<void> {
   if (await submit()) {
     emit('created')
-    emit('close')
+    emit('update:open', false)
   }
 }
 
@@ -28,7 +28,8 @@ watch(
     :open="open"
     title="新建用户"
     content-class="w-[min(440px,calc(100vw-2rem))]"
-    @close="emit('close')"
+    @update:open="(open) => emit('update:open', open)"
+    @close="emit('update:open', false)"
   >
     <form class="dialog-card" @submit.prevent="submitUser">
       <div class="dialog-heading">
@@ -36,7 +37,7 @@ watch(
           <p class="eyebrow">系统管理</p>
           <h2>新建用户</h2>
         </div>
-        <button type="button" class="dialog-close" @click="emit('close')">关闭</button>
+        <button type="button" class="dialog-close" @click="emit('update:open', false)">关闭</button>
       </div>
       <label
         >登录名<input v-model.trim="form.login" required minlength="3" maxlength="120"
@@ -61,7 +62,7 @@ watch(
         </select></label
       >
       <div class="dialog-actions">
-        <button type="button" class="secondary-button" @click="emit('close')">取消</button>
+        <button type="button" class="secondary-button" @click="emit('update:open', false)">取消</button>
         <button class="primary-button" :disabled="saving">
           {{ saving ? '保存中…' : '创建用户' }}
         </button>

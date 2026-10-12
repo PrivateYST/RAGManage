@@ -9,6 +9,7 @@
     "start": "cmd /c infra\\scripts\\start.bat",
     "pause": "cmd /c infra\\scripts\\pause.bat",
     "restart": "cmd /c infra\\scripts\\restart.bat",
+    "dev:backend": "cmd /c infra\\scripts\\dev-backend.bat",
     "dev": "pnpm --filter @ragmanage/frontend run dev",
     "build": "pnpm --filter @ragmanage/frontend run build",
     "typecheck": "pnpm --filter @ragmanage/frontend run typecheck",

@@ -7,6 +7,6 @@ export interface CreateUserDialogProps {
 }
 
 export interface CreateUserDialogEmits {
-  close: []
+  'update:open': [open: boolean]
   created: []
 }

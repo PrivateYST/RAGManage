@@ -181,6 +181,9 @@ class UserPatch(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=100)
     status: str | None = Field(default=None, pattern=r"^(active|disabled)$")
     password: str | None = Field(default=None, min_length=8, max_length=200)
+    platform_role_code: str | None = None
+    tenant_id: int | None = None
+    tenant_role_code: str | None = None
 
 
 class PasswordChange(BaseModel):
@@ -2888,6 +2891,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     detail=f"模型不在网关白名单中：{'、'.join(sorted(unknown_models))}",
                 )
             values["allowed_models"] = json.dumps(models, ensure_ascii=False)
+        role_values = {key: values.pop(key) for key in ("platform_role_code", "tenant_id", "tenant_role_code") if key in values}
+        if "tenant_id" in role_values and role_values["tenant_id"] is not None and not role_values.get("tenant_role_code"):
+            raise HTTPException(status_code=400, detail="分配空间时必须指定空间角色")
         assignments: list[str] = []
         parameters: list[Any] = [endpoint_id]
         for index, (key, value) in enumerate(values.items(), 2):
@@ -3889,6 +3895,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 if before is None:
                     raise HTTPException(status_code=404, detail="用户不存在")
+                # 编辑表单提交角色三元组时，在同一事务内校验角色与空间并替换当前有效归属。
+                if role_values:
+                    platform_role_id = None
+                    if role_values.get("platform_role_code"):
+                        platform_role_id = await connection.fetchval(
+                            "SELECT id FROM roles WHERE code = $1 AND scope = 'platform'",
+                            role_values["platform_role_code"],
+                        )
+                        if platform_role_id is None:
+                            raise HTTPException(status_code=400, detail="平台角色不存在")
+                    await connection.execute(
+                        "UPDATE users SET platform_role_id = $2 WHERE id = $1",
+                        user_id,
+                        platform_role_id,
+                    )
+                    await connection.execute(
+                        "UPDATE tenant_members SET status = 'disabled' WHERE user_id = $1 AND status = 'active'",
+                        user_id,
+                    )
+                    if role_values.get("tenant_id") is not None:
+                        tenant_role_id = await connection.fetchval(
+                            "SELECT id FROM roles WHERE code = $1 AND scope = 'tenant'",
+                            role_values["tenant_role_code"],
+                        )
+                        tenant_exists = await connection.fetchval(
+                            "SELECT EXISTS (SELECT 1 FROM tenants WHERE id = $1 AND status = 'active')",
+                            role_values["tenant_id"],
+                        )
+                        if tenant_role_id is None or not tenant_exists:
+                            raise HTTPException(status_code=400, detail="空间或空间角色不存在")
+                        await connection.execute(
+                            """
+                            INSERT INTO tenant_members(tenant_id, user_id, role_id, status)
+                            VALUES ($1, $2, $3, 'active')
+                            ON CONFLICT (tenant_id, user_id) DO UPDATE
+                            SET role_id = EXCLUDED.role_id, status = 'active'
+                            """,
+                            role_values["tenant_id"],
+                            user_id,
+                            tenant_role_id,
+                        )
                 row = await connection.fetchrow(
                     f"""
                     UPDATE users SET {", ".join(assignments)}, updated_at = now()
@@ -3896,6 +3943,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     RETURNING id::text, login, display_name, status, last_login_at, created_at
                     """,
                     *parameters,
+                ) if assignments else await connection.fetchrow(
+                    "SELECT id::text, login, display_name, status, last_login_at, created_at FROM users WHERE id = $1",
+                    user_id,
                 )
                 if row is None:
                     raise HTTPException(status_code=404, detail="用户不存在")
