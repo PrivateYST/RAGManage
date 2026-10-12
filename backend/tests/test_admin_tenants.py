@@ -76,6 +76,7 @@ class FakeTenantListConnection:
                 "api_key_token_limit": 1000,
                 "api_key_token_used": 120,
                 "api_key_token_remaining": 880,
+                "api_key_configured_at": None,
                 "api_key_expires_at": None,
             }
         ]
@@ -122,5 +123,6 @@ def test_admin_tenant_list_includes_key_summary_without_plaintext(monkeypatch) -
     assert item["api_key_id"] == "9"
     assert item["api_key_prefix"] == "sk-customer…1234"
     assert item["api_key_token_remaining"] == 880
+    assert item["api_key_configured_at"] is None
     assert "raw_key" not in item
     assert connection.closed

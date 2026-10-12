@@ -29,6 +29,8 @@ export interface CompanyApiKey {
   last_used_at: string | null
   created_at: string
   revoked_at: string | null
+  /** 医院管理员粘贴并确认交接的时间；未确认时为空。 */
+  configured_at: string | null
 }
 
 /** 单个模型在一次问答中的 Token 用量。 */

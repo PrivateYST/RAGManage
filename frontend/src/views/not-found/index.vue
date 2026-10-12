@@ -4,14 +4,10 @@
 -->
 <!-- eslint-disable vue/singleline-html-element-content-newline -->
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { useNotFoundPage } from './index'
+import './index.scss'
 
-const router = useRouter()
-
-/** 返回受守卫保护的工作台入口，由路由守卫决定登录或默认菜单去向。 */
-function backToWorkspace(): void {
-  void router.push('/')
-}
+const { backToWorkspace } = useNotFoundPage()
 </script>
 
 <template>

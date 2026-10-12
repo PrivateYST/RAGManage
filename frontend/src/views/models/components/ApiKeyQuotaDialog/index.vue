@@ -3,6 +3,7 @@
 import type { ApiKeyQuotaDialogEmits, ApiKeyQuotaDialogProps } from './type'
 import { AppDialog, SlidersHorizontal } from '@/components'
 import { useApiKeyQuotaDialog } from './index'
+import './index.scss'
 
 const props = defineProps<ApiKeyQuotaDialogProps>()
 const emit = defineEmits<ApiKeyQuotaDialogEmits>()

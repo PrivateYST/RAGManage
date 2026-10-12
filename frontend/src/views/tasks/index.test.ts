@@ -34,7 +34,7 @@ describe('tasks page error state', () => {
   it('shows the error and exposes a reload action', async () => {
     const wrapper = mount(TasksPage)
     expect(wrapper.get('[role="alert"]').text()).toContain('任务服务暂时不可用')
-    await wrapper.get('.task-error button').trigger('click')
+    await wrapper.get('[role="alert"] button').trigger('click')
     expect(loadData).toHaveBeenCalledOnce()
   })
 })

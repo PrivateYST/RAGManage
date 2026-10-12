@@ -8,7 +8,9 @@ import EndpointTable from './components/EndpointTable/index.vue'
 import GatewayApiKeyDialog from './components/GatewayApiKeyDialog/index.vue'
 import IngestionProfiles from './components/IngestionProfiles/index.vue'
 import RuntimeProfiles from './components/RuntimeProfiles/index.vue'
+import TenantApiKeyConfig from './components/TenantApiKeyConfig/index.vue'
 import { useModelsPage } from './index'
+import './index.scss'
 
 const {
   view,
@@ -27,6 +29,9 @@ const {
   profiles,
   lastHealthResult,
   canManageEndpoints,
+  canConfigureTenantKey,
+  activeSpaceName,
+  auth,
   loadPage,
   loadProfiles,
   openCreateEndpoint,
@@ -122,7 +127,7 @@ const {
       aria-label="模型配置视图"
     >
       <button
-        v-if="canManageEndpoints"
+        v-if="canManageEndpoints || canConfigureTenantKey"
         type="button"
         class="inline-flex h-[32px] shrink-0 items-center gap-[6px] rounded px-[12px] text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         :class="view === 'endpoints' ? 'bg-card font-semibold text-primary' : ''"
@@ -142,10 +147,14 @@ const {
         v-if="canManageEndpoints"
         type="button"
         class="inline-flex h-[32px] shrink-0 items-center gap-[6px] rounded px-[12px] text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        :class="view === 'api-keys' ? 'bg-card font-semibold text-primary' : ''"
-        @click="view = 'api-keys'"
+        :class="
+          view === (canManageEndpoints ? 'api-keys' : 'tenant-api-key')
+            ? 'bg-card font-semibold text-primary'
+            : ''
+        "
+        @click="view = canManageEndpoints ? 'api-keys' : 'tenant-api-key'"
       >
-        <KeyRound :size="14" />医院网关 Key
+        <KeyRound :size="14" />医院 API Key
       </button>
     </nav>
 
@@ -215,6 +224,12 @@ const {
         }}</strong>
       </section>
     </template>
+
+    <TenantApiKeyConfig
+      v-else-if="view === 'tenant-api-key' && canConfigureTenantKey"
+      :tenant-id="auth.activeSpaceId"
+      :tenant-name="activeSpaceName"
+    />
 
     <ApiKeyManager v-else-if="canManageEndpoints" @configure="openGatewayKeyDialog" />
 

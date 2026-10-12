@@ -2,39 +2,20 @@
 <script setup lang="ts">
 import type { BuildDetailDialogEmits, BuildDetailDialogProps } from './type'
 import { AppDialog, Box, FileText, X } from '@/components'
+import {
+  buildDetailProviderLabel,
+  buildDetailTotals,
+  buildDocumentErrorMessage,
+  buildDocumentStateLabel,
+  formatBuildDetailDate,
+  shortBuildDetailHash,
+} from './index'
 import './index.scss'
 
 const props = defineProps<BuildDetailDialogProps>()
 const emit = defineEmits<BuildDetailDialogEmits>()
 
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString('zh-CN', { hour12: false })
-}
-
-function shortHash(value: string): string {
-  return value.length > 16 ? value.slice(0, 16) : value
-}
-
-function providerLabel(value: string): string {
-  return value === 'open_webui' ? 'Open WebUI 网关' : value === 'ollama' ? 'Ollama 直连' : value
-}
-
-function stateLabel(value: string): string {
-  return value === 'completed' ? '构建完成' : value === 'failed' ? '失败' : value
-}
-
-function errorMessage(error: Record<string, unknown> | null): string {
-  if (!error) return '—'
-  return typeof error.message === 'string'
-    ? error.message
-    : typeof error.code === 'string'
-      ? error.code
-      : '处理失败'
-}
-
-const totalChunks = () => props.detail?.items.reduce((sum, item) => sum + item.chunk_count, 0) ?? 0
-const totalEmbedded = () =>
-  props.detail?.items.reduce((sum, item) => sum + item.embedded_count, 0) ?? 0
+const detailTotals = () => buildDetailTotals(props.detail)
 </script>
 
 <template>
@@ -68,10 +49,10 @@ const totalEmbedded = () =>
             <span>文档</span><strong>{{ detail.items.length }}</strong>
           </article>
           <article>
-            <span>切片</span><strong>{{ totalChunks() }}</strong>
+            <span>切片</span><strong>{{ detailTotals().chunks }}</strong>
           </article>
           <article>
-            <span>向量</span><strong>{{ totalEmbedded() }}</strong>
+            <span>向量</span><strong>{{ detailTotals().embedded }}</strong>
           </article>
           <article>
             <span>状态</span
@@ -82,7 +63,8 @@ const totalEmbedded = () =>
         </section>
         <section class="build-detail-section">
           <div class="build-detail-section-title">
-            <strong>构建快照</strong><span>{{ formatDate(detail.build.updated_at) }}</span>
+            <strong>构建快照</strong
+            ><span>{{ formatBuildDetailDate(detail.build.updated_at) }}</span>
           </div>
           <dl class="build-detail-config">
             <dt>内容世代</dt>
@@ -92,18 +74,18 @@ const totalEmbedded = () =>
             <dt>嵌入模型</dt>
             <dd>{{ detail.build.model_name }} · {{ detail.build.dimension }} 维</dd>
             <dt>模型摘要</dt>
-            <dd>{{ shortHash(detail.build.model_revision) }}</dd>
+            <dd>{{ shortBuildDetailHash(detail.build.model_revision) }}</dd>
             <dt>嵌入配置</dt>
             <dd>
               Profile #{{ detail.build.embedding_profile_id }} ·
-              {{ providerLabel(detail.build.provider) }}
+              {{ buildDetailProviderLabel(detail.build.provider) }}
             </dd>
             <dt>Runtime 快照</dt>
             <dd>{{ detail.build.runtime_profile_id ?? '未绑定' }}</dd>
             <dt>接入端点</dt>
             <dd>{{ detail.build.base_url }}</dd>
             <dt>配置摘要</dt>
-            <dd>{{ shortHash(detail.build.embedding_definition_hash) }}</dd>
+            <dd>{{ shortBuildDetailHash(detail.build.embedding_definition_hash) }}</dd>
           </dl>
         </section>
         <section class="build-detail-section">
@@ -120,8 +102,8 @@ const totalEmbedded = () =>
               ><span>v{{ item.version_no }}</span
               ><span>{{ item.chunk_count }}</span
               ><span>{{ item.embedded_count }}</span
-              ><span>{{ stateLabel(item.state) }}</span
-              ><span class="build-document-error">{{ errorMessage(item.error) }}</span>
+              ><span>{{ buildDocumentStateLabel(item.state) }}</span
+              ><span class="build-document-error">{{ buildDocumentErrorMessage(item.error) }}</span>
             </div>
           </div>
           <div v-else class="build-document-empty">当前构建没有文档处理记录。</div>

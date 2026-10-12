@@ -1,0 +1,6 @@
+// 用户操作按钮需要横向分组；样式仅作用于本页面表格。
+.user-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}

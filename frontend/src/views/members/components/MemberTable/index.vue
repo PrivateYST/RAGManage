@@ -1,20 +1,11 @@
 <script setup lang="ts">
 import type { MemberTableEmits, MemberTableProps } from './type'
-import type { AppTableColumn } from '@/components'
 import { AppTable, UserRoundX, Users } from '@/components'
-import { formatJoinDate, spaceRoleOptions } from './index'
+import { formatJoinDate, memberColumns, spaceRoleOptions } from './index'
 import './index.scss'
 
 defineProps<MemberTableProps>()
 const emit = defineEmits<MemberTableEmits>()
-const columns: AppTableColumn<import('@/api/members').SpaceMember>[] = [
-  { key: 'member', title: '成员' },
-  { key: 'role', title: '空间角色' },
-  { key: 'grants', title: '知识库授权' },
-  { key: 'status', title: '状态' },
-  { key: 'joined', title: '加入日期' },
-  { key: 'actions', title: '操作' },
-]
 </script>
 
 <template>
@@ -29,7 +20,7 @@ const columns: AppTableColumn<import('@/api/members').SpaceMember>[] = [
       <span>使用右上角“添加成员”分配第一个账号。</span>
     </div>
     <div v-else class="member-table-scroll">
-      <AppTable :rows="items" :columns="columns" row-key="id" class="member-table">
+      <AppTable :rows="items" :columns="memberColumns" row-key="id" class="member-table">
         <template #cell-member="{ row: member }">
           <div class="member-identity">
             <span>{{ member.display_name.slice(0, 1) }}</span>

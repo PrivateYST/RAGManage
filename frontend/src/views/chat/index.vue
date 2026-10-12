@@ -1,11 +1,12 @@
+<!-- 对话工作区页面：只组合知识库、会话、消息、引用和输入区，并绑定页面动作。 -->
 <script setup lang="ts">
-import { computed, nextTick, useTemplateRef, watch } from 'vue'
+import type { ChatPageState } from './type'
 import { Bot, Database, Plus } from '@/components'
-import ChatComposer from './components/ChatComposer.vue'
-import ChatMessage from './components/ChatMessage.vue'
-import CitationPanel from './components/CitationPanel.vue'
-import ConversationList from './components/ConversationList.vue'
-import { useChatRun } from './index'
+import ChatComposer from './components/ChatComposer/index.vue'
+import ChatMessage from './components/ChatMessage/index.vue'
+import CitationPanel from './components/CitationPanel/index.vue'
+import ConversationList from './components/ConversationList/index.vue'
+import { useChatRun, useChatViewport } from './index'
 import './index.scss'
 
 const {
@@ -35,24 +36,12 @@ const {
   closeCitations,
   feedback,
   loadConversations,
-} = useChatRun()
+} = useChatRun() satisfies ChatPageState
 
-const messageViewport = useTemplateRef<HTMLElement>('messageViewport')
-const disabledReason = computed(() => (!knowledgeBaseId.value ? '当前空间暂无可访问知识库' : ''))
-const latestMessageContent = computed(() => messages.value.at(-1)?.content ?? '')
-let shouldFollowStream = true
-
-function onMessageScroll(): void {
-  const viewport = messageViewport.value
-  if (!viewport) return
-  shouldFollowStream = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 56
-}
-
-watch([() => messages.value.length, latestMessageContent], async () => {
-  if (!shouldFollowStream) return
-  await nextTick()
-  if (messageViewport.value) messageViewport.value.scrollTop = messageViewport.value.scrollHeight
-})
+const { messageViewport, disabledReason, onMessageScroll } = useChatViewport(
+  messages,
+  knowledgeBaseId,
+)
 </script>
 
 <template>
@@ -178,3 +167,5 @@ watch([() => messages.value.length, latestMessageContent], async () => {
     </div>
   </section>
 </template>
+
+<style scoped lang="scss" src="./index.scss"></style>

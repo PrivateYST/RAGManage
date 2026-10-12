@@ -15,13 +15,18 @@ import BuildsPage from '@/views/builds/index.vue'
 import ChatPage from '@/views/chat/index.vue'
 import DashboardPage from '@/views/dashboard/index.vue'
 import DocumentsPage from '@/views/documents/index.vue'
+import EnvironmentPage from '@/views/environment/index.vue'
+import KnowledgeBasesPage from '@/views/knowledge-bases/index.vue'
 import LoginPage from '@/views/login/index.vue'
-import ManagementPage from '@/views/management/index.vue'
 import MembersPage from '@/views/members/index.vue'
 import ModelsPage from '@/views/models/index.vue'
 import NotFoundPage from '@/views/not-found/index.vue'
 import RuntimeStatusPage from '@/views/runtime-status/index.vue'
 import SearchTestPage from '@/views/search-test/index.vue'
+import MenusManagementPage from '@/views/system/menus/index.vue'
+import RolesManagementPage from '@/views/system/roles/index.vue'
+import SpacesManagementPage from '@/views/system/spaces/index.vue'
+import UserManagementPage from '@/views/system/users/index.vue'
 import TasksPage from '@/views/tasks/index.vue'
 
 const APP_SHELL_ROUTE_NAME = 'app-shell'
@@ -34,20 +39,21 @@ const TRAILING_SLASH_PATTERN = /\/+$/
 /** 后端 route 到本地页面组件的白名单，防止任意接口值参与模块加载。 */
 export const routeComponents: Record<string, Component> = {
   '/dashboard': DashboardPage,
-  '/knowledge-bases': ManagementPage,
+  '/knowledge-bases': KnowledgeBasesPage,
   '/documents': DocumentsPage,
   '/releases': BuildsPage,
   '/chat': ChatPage,
   '/search-test': SearchTestPage,
   '/tasks': TasksPage,
   '/members': MembersPage,
-  '/system/spaces': ManagementPage,
-  '/system/users': ManagementPage,
-  '/system/roles': ManagementPage,
-  '/system/menus': ManagementPage,
+  '/system/spaces': SpacesManagementPage,
+  '/system/users': UserManagementPage,
+  '/system/roles': RolesManagementPage,
+  '/system/menus': MenusManagementPage,
   '/system/audit': AuditPage,
   '/system/models': ModelsPage,
   '/system/status': RuntimeStatusPage,
+  '/system/environment': EnvironmentPage,
 }
 
 /** 只有登录、404 和兜底页是静态路由，业务 children 由菜单接口动态补充。 */

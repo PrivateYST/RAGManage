@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 
+/** 对话页面回归覆盖真实组件联动：通过输入区提交，并展示问答结果引用定位。 */
+
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref, shallowRef } from 'vue'
@@ -10,6 +12,11 @@ const testState = vi.hoisted(() => ({
 }))
 
 vi.mock('./index', () => ({
+  useChatViewport: () => ({
+    messageViewport: { value: null },
+    disabledReason: computed(() => ''),
+    onMessageScroll: vi.fn(),
+  }),
   useChatRun: () => {
     const knowledgeBases = ref([
       {
@@ -89,7 +96,7 @@ vi.mock('./index', () => ({
       loading: shallowRef(false),
       sending: shallowRef(false),
       canSend: computed(() => true),
-      error: shallowRef(''),
+      loadError: shallowRef(''),
       citationPanelOpen: shallowRef(true),
       selectedCitations: ref([
         {
@@ -114,6 +121,7 @@ vi.mock('./index', () => ({
       showCitations: vi.fn(),
       closeCitations: vi.fn(),
       feedback: vi.fn(),
+      loadConversations: vi.fn(),
     }
   },
 }))

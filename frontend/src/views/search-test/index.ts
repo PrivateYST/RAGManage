@@ -1,3 +1,4 @@
+import type { SearchTestState } from './type'
 import type { KnowledgeBaseRow } from '@/api/admin'
 import type { SearchTestResult } from '@/api/search'
 import { computed, ref, shallowRef, watch } from 'vue'
@@ -6,7 +7,8 @@ import { runSearchTest } from '@/api/search'
 import { useAppToast } from '@/composables/useToast'
 import { useAuthStore } from '@/store/auth'
 
-export function useSearchTest() {
+/** 管理检索调试页的空间知识库范围、查询条件及正式检索请求。 */
+export function useSearchTest(): SearchTestState {
   const auth = useAuthStore()
   const toast = useAppToast()
   const knowledgeBases = ref<KnowledgeBaseRow[]>([])

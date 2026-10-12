@@ -54,6 +54,14 @@ describe('dynamic application routes', () => {
     )
     expect(rootRoute?.children).toEqual([])
     expect(routeComponents['/dashboard']).toBeDefined()
+    expect(routeComponents['/knowledge-bases']).toBeDefined()
+    expect(routeComponents['/knowledge-bases']).not.toBe(routeComponents['/system/users'])
+    expect(routeComponents['/system/users']).toBeDefined()
+    expect(routeComponents['/system/users']).not.toBe(routeComponents['/system/spaces'])
+    expect(routeComponents['/system/spaces']).not.toBe(routeComponents['/system/roles'])
+    expect(routeComponents['/system/menus']).not.toBe(routeComponents['/system/roles'])
+    expect(routeComponents['/system/environment']).toBeDefined()
+    expect(routeComponents['/system/environment']).not.toBe(routeComponents['/system/status'])
   })
 
   it('registers visible menu routes and ignores buttons, hidden items, and unknown paths', () => {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { RefreshCw, SearchCheck } from '@/components'
-import SearchQueryForm from './components/SearchQueryForm.vue'
-import SearchResultList from './components/SearchResultList.vue'
+import SearchQueryForm from './components/SearchQueryForm/index.vue'
+import SearchResultList from './components/SearchResultList/index.vue'
 import { useSearchTest } from './index'
 
 const {
@@ -22,7 +22,7 @@ const {
 </script>
 
 <template>
-  <section class="mx-auto w-full max-w-[1160px] pb-[28px]">
+  <section class="search-test-page mx-auto w-full max-w-[1160px] pb-[28px]">
     <div class="page-intro">
       <div>
         <p class="eyebrow">检索与评测</p>
@@ -93,3 +93,5 @@ const {
     <SearchResultList :result="result" :searching="searching" />
   </section>
 </template>
+
+<style scoped lang="scss" src="./index.scss"></style>

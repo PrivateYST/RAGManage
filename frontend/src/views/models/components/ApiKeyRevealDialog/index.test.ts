@@ -26,6 +26,7 @@ const apiKey: CreatedApiKey = {
   last_used_at: null,
   created_at: '2026-09-20T00:00:00Z',
   revoked_at: null,
+  configured_at: null,
 }
 
 describe('api key reveal dialog', () => {

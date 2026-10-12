@@ -9,6 +9,7 @@
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
+    "structure:check": "node scripts/check-frontend-structure.mjs",
     "format": "prettier --write \"src/**/*.{ts,vue,css}\" index.html vite.config.ts tsconfig.json package.json",
     "format:check": "prettier --check \"src/**/*.{ts,vue,css}\" index.html vite.config.ts tsconfig.json package.json",
     "lint:fix": "eslint . --fix --max-warnings 0"

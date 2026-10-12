@@ -25,6 +25,7 @@ const companyKey: CompanyApiKey = {
   last_used_at: '2026-09-20T00:00:00Z',
   created_at: '2026-09-20T00:00:00Z',
   revoked_at: null,
+  configured_at: null,
 }
 
 describe('api key table', () => {
@@ -49,5 +50,17 @@ describe('api key table', () => {
       '最后使用',
       '操作',
     ])
+  })
+
+  it('shows whether the hospital has confirmed the assigned key handoff', async () => {
+    const wrapper = mount(ApiKeyTable, {
+      props: { items: [companyKey], loading: false, busyId: '' },
+    })
+
+    expect(wrapper.text()).toContain('待医院粘贴确认')
+    await wrapper.setProps({
+      items: [{ ...companyKey, configured_at: '2026-10-12T00:00:00Z' }],
+    })
+    expect(wrapper.text()).toContain('医院已确认配置')
   })
 })

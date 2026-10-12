@@ -4,6 +4,12 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
+import {
+  buildDetailTotals,
+  buildDocumentErrorMessage,
+  buildDocumentStateLabel,
+  shortBuildDetailHash,
+} from './index'
 import BuildDetailDialog from './index.vue'
 vi.mock('@/components', () => {
   const icon = defineComponent({ setup: () => () => h('span') })
@@ -111,5 +117,13 @@ describe('build detail dialog', () => {
       props: { open: true, loading: false, error: '', selectedBuild: build, detail: detail([]) },
     })
     expect(document.body.textContent).toContain('当前构建没有文档处理记录')
+  })
+
+  it('summarizes detail rows and preserves unknown diagnostic values', () => {
+    expect(buildDetailTotals(detail())).toEqual({ chunks: 4, embedded: 4 })
+    expect(buildDetailTotals(null)).toEqual({ chunks: 0, embedded: 0 })
+    expect(buildDocumentStateLabel('queued')).toBe('queued')
+    expect(buildDocumentErrorMessage({ code: 'EMBED_FAILED' })).toBe('EMBED_FAILED')
+    expect(shortBuildDetailHash('revision-123456789')).toBe('revision-1234567')
   })
 })

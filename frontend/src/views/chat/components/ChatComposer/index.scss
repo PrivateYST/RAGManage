@@ -1,0 +1,62 @@
+/* 输入框的细节样式保留在组件内，避免覆盖其他表单的 textarea。 */
+.chat-composer {
+  display: grid;
+  position: relative;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 10px;
+  padding: 10px 15px 11px;
+  border-top: 1px solid var(--border);
+  background: #fff;
+}
+
+.chat-composer textarea {
+  width: 100%;
+  min-height: 62px;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  padding: 10px 90px 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  outline: none;
+  color: #27272a;
+  font-size: 11px;
+  line-height: 1.55;
+  resize: none;
+}
+
+.chat-composer textarea:focus {
+  border-color: #9b82dc;
+  box-shadow: 0 0 0 2px rgb(118 86 200 / 12%);
+}
+
+.chat-composer > button {
+  z-index: 1;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+  justify-self: end;
+  margin: 0 8px 8px 0;
+}
+
+.chat-composer > small {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  padding-left: 11px;
+  color: #a1a1aa;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.chat-stop-button {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #b91c1c;
+  background: #fef2f2;
+  font-size: 10px;
+}

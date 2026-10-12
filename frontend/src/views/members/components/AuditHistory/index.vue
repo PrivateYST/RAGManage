@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AuditHistoryProps } from './type'
 import { History } from '@/components'
-import { actionLabel, summaryText } from './index'
+import { actionLabel, formatAuditDate, summaryText } from './index'
 import './index.scss'
 
 defineProps<AuditHistoryProps>()
@@ -27,7 +27,7 @@ defineProps<AuditHistoryProps>()
         <div>
           <div>
             <strong>{{ actionLabel(item.action) }}</strong
-            ><time>{{ new Date(item.created_at).toLocaleString('zh-CN') }}</time>
+            ><time>{{ formatAuditDate(item.created_at) }}</time>
           </div>
           <p>
             {{ item.actor_name || '系统' }} 对

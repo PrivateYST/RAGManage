@@ -48,6 +48,7 @@ describe('api key create dialog', () => {
             api_key_token_limit: null,
             api_key_token_used: null,
             api_key_token_remaining: null,
+            api_key_configured_at: null,
             api_key_expires_at: null,
           },
         ],

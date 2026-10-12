@@ -36,35 +36,6 @@ export function useTasksPage() {
     () => new Map(knowledgeBases.value.map((item) => [item.id, item.name])),
   )
 
-  const stateLabels: Record<string, string> = {
-    queued: '排队中',
-    running: '处理中',
-    completed: '已完成',
-    failed: '失败',
-    cancelled: '已取消',
-    interrupted: '已中断',
-  }
-
-  function stateLabel(value: string): string {
-    return stateLabels[value] ?? value
-  }
-
-  function taskLabel(value: string): string {
-    return (
-      { document_parse: '文档解析', document_embed: '文档嵌入', index_build: '索引构建' }[value] ??
-      value
-    )
-  }
-
-  function formatDate(value: string): string {
-    return new Date(value).toLocaleString('zh-CN', { hour12: false })
-  }
-
-  function progress(task: TaskRow): string {
-    if (!task.item_count) return task.state === 'completed' ? '已完成' : '—'
-    return `${task.completed_items} / ${task.item_count}`
-  }
-
   /** 首次进入页面或切换空间时同时刷新知识库选项和任务列表。 */
   async function loadData(): Promise<void> {
     loading.value = true
@@ -157,10 +128,6 @@ export function useTasksPage() {
     loading,
     errorMessage,
     busyTaskId,
-    stateLabel,
-    taskLabel,
-    formatDate,
-    progress,
     loadData,
     handleRetry,
     handleCancel,

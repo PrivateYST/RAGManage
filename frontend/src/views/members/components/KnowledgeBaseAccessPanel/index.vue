@@ -1,21 +1,18 @@
 <script setup lang="ts">
 import type { KnowledgeBaseAccessPanelEmits, KnowledgeBaseAccessPanelProps } from './type'
 import type { KnowledgeBaseRoleCode } from '@/api/members'
-import type { AppTableColumn } from '@/components'
 import { AppTable, KeyRound, Library, ShieldCheck } from '@/components'
-import { knowledgeBaseRoleOptions, useKnowledgeBaseAccessPanel } from './index'
+import {
+  knowledgeBaseMemberColumns,
+  knowledgeBaseRoleOptions,
+  useKnowledgeBaseAccessPanel,
+} from './index'
 import './index.scss'
 
 const props = defineProps<KnowledgeBaseAccessPanelProps>()
 const emit = defineEmits<KnowledgeBaseAccessPanelEmits>()
 const { candidateId, roleCode, availableCandidates, selectedCandidate, submitGrant } =
   useKnowledgeBaseAccessPanel(props, emit)
-const columns: AppTableColumn<import('@/api/members').KnowledgeBaseMember>[] = [
-  { key: 'member', title: '成员' },
-  { key: 'role', title: '知识库角色' },
-  { key: 'status', title: '状态' },
-  { key: 'actions', title: '操作' },
-]
 </script>
 
 <template>
@@ -86,7 +83,12 @@ const columns: AppTableColumn<import('@/api/members').KnowledgeBaseMember>[] = [
       ><span>空间管理员仍拥有管理权限，客户用户按空间读取已发布内容。</span>
     </div>
     <div v-else class="kb-access-table-wrap">
-      <AppTable :rows="members" :columns="columns" row-key="id" class="kb-access-table">
+      <AppTable
+        :rows="members"
+        :columns="knowledgeBaseMemberColumns"
+        row-key="id"
+        class="kb-access-table"
+      >
         <template #cell-member="{ row: member }">
           <strong>{{ member.display_name }}</strong
           ><small>{{ member.login }}</small>

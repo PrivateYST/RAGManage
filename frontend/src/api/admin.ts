@@ -84,6 +84,8 @@ export interface TenantRow {
   api_key_token_limit: number | null
   api_key_token_used: number | null
   api_key_token_remaining: number | null
+  /** 医院管理员粘贴并确认最新 Key 的时间；尚未确认时为空。 */
+  api_key_configured_at: string | null
   api_key_expires_at: string | null
 }
 

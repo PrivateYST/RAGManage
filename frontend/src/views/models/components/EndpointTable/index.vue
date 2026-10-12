@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import type { EndpointTableProps } from './type'
 import type { ModelEndpoint } from '@/api/models'
-import type { AppTableColumn } from '@/components'
 import { Activity, AppTable, Pencil, Power } from '@/components'
-import { endpointTypeLabel } from '@/views/models/enum'
-import { useEndpointTable } from './index'
+import { endpointColumns, endpointPurpose, useEndpointTable } from './index'
+import './index.scss'
 
 defineProps<EndpointTableProps>()
 const emit = defineEmits<{
@@ -13,17 +12,6 @@ const emit = defineEmits<{
   check: [endpoint: ModelEndpoint, modelName: string]
 }>()
 const { selectedModel, setSelectedModel } = useEndpointTable()
-function endpointPurpose(endpoint: ModelEndpoint): string {
-  return endpointTypeLabel[endpoint.endpoint_type]
-}
-const columns: AppTableColumn<ModelEndpoint>[] = [
-  { key: 'endpoint', title: '端点' },
-  { key: 'purpose', title: '用途' },
-  { key: 'models', title: '模型白名单' },
-  { key: 'health', title: '健康状态' },
-  { key: 'status', title: '状态' },
-  { key: 'actions', title: '操作' },
-]
 </script>
 
 <template>
@@ -42,7 +30,7 @@ const columns: AppTableColumn<ModelEndpoint>[] = [
     <div class="overflow-x-auto">
       <AppTable
         :rows="items"
-        :columns="columns"
+        :columns="endpointColumns"
         row-key="id"
         :loading="loading"
         empty-text="尚未登记模型端点"

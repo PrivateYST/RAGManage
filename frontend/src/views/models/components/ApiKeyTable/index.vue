@@ -2,9 +2,8 @@
 <script setup lang="ts">
 import type { ApiKeyTableProps } from './type'
 import type { CompanyApiKey } from '@/api/apiKeys'
-import type { AppTableColumn } from '@/components'
 import { AppTable, Copy, History, KeyRound, Power, SlidersHorizontal, Trash2 } from '@/components'
-import { apiKeyStatusLabel, formatApiKeyDate } from './index'
+import { apiKeyColumns, apiKeyStatusLabel, formatApiKeyDate } from './index'
 import './index.scss'
 
 defineProps<ApiKeyTableProps>()
@@ -18,15 +17,6 @@ const emit = defineEmits<{
 function statusText(status: CompanyApiKey['status']): string {
   return apiKeyStatusLabel[status]
 }
-const columns: AppTableColumn<CompanyApiKey>[] = [
-  { key: 'client', title: '客户 / 名称' },
-  { key: 'key', title: 'API Key' },
-  { key: 'status', title: '状态' },
-  { key: 'quota', title: '额度（总 / 已用 / 剩余）' },
-  { key: 'usage', title: '输入 / 输出' },
-  { key: 'lastUsed', title: '最后使用' },
-  { key: 'actions', title: '操作' },
-]
 </script>
 
 <template>
@@ -45,7 +35,7 @@ const columns: AppTableColumn<CompanyApiKey>[] = [
     <div class="overflow-x-auto">
       <AppTable
         :rows="items"
-        :columns="columns"
+        :columns="apiKeyColumns"
         row-key="id"
         :loading="loading"
         empty-text="还没有发放 API Key"
@@ -78,23 +68,28 @@ const columns: AppTableColumn<CompanyApiKey>[] = [
           </div>
         </template>
         <template #cell-status="{ row: item }">
-          <button
-            v-if="item.status === 'active' || item.status === 'disabled'"
-            class="inline-flex min-h-[20px] items-center gap-[4px] rounded-full border-0 px-[8px] text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            :class="item.status"
-            type="button"
-            :disabled="busyId === item.id"
-            :title="item.status === 'active' ? '点击停用此 Key' : '点击启用此 Key'"
-            @click="emit('toggleStatus', item)"
-          >
-            <Power :size="11" />{{ statusText(item.status) }}
-          </button>
-          <span
-            v-else
-            class="inline-flex min-h-[20px] items-center rounded-full px-[8px] text-[10px] font-medium"
-            :class="item.status"
-            >{{ statusText(item.status) }}</span
-          >
+          <div class="flex flex-col items-start gap-[4px]">
+            <button
+              v-if="item.status === 'active' || item.status === 'disabled'"
+              class="inline-flex min-h-[20px] items-center gap-[4px] rounded-full border-0 px-[8px] text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              :class="item.status"
+              type="button"
+              :disabled="busyId === item.id"
+              :title="item.status === 'active' ? '点击停用此 Key' : '点击启用此 Key'"
+              @click="emit('toggleStatus', item)"
+            >
+              <Power :size="11" />{{ statusText(item.status) }}
+            </button>
+            <span
+              v-else
+              class="inline-flex min-h-[20px] items-center rounded-full px-[8px] text-[10px] font-medium"
+              :class="item.status"
+              >{{ statusText(item.status) }}</span
+            >
+            <small class="text-[10px] text-muted-foreground">
+              {{ item.configured_at ? '医院已确认配置' : '待医院粘贴确认' }}
+            </small>
+          </div>
         </template>
         <template #cell-quota="{ row: item }">
           <strong class="block text-xs font-semibold text-foreground">{{

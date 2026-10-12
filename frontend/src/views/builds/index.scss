@@ -86,9 +86,15 @@
   line-height: 1;
 }
 
-.build-metric.running strong { color: #1d4ed8; }
-.build-metric.ready strong { color: #15803d; }
-.build-metric.failed strong { color: #b91c1c; }
+.build-metric.running strong {
+  color: #1d4ed8;
+}
+.build-metric.ready strong {
+  color: #15803d;
+}
+.build-metric.failed strong {
+  color: #b91c1c;
+}
 
 .build-loading {
   min-height: 220px;
@@ -103,12 +109,24 @@
   min-width: 1040px;
 }
 
-.build-table-card th:nth-child(1) { width: 190px; }
-.build-table-card th:nth-child(2) { width: 120px; }
-.build-table-card th:nth-child(3) { width: 120px; }
-.build-table-card th:nth-child(4) { width: 112px; }
-.build-table-card th:nth-child(5) { width: 160px; }
-.build-table-card th:nth-child(7) { width: 104px; }
+.build-table-card th:nth-child(1) {
+  width: 190px;
+}
+.build-table-card th:nth-child(2) {
+  width: 120px;
+}
+.build-table-card th:nth-child(3) {
+  width: 120px;
+}
+.build-table-card th:nth-child(4) {
+  width: 112px;
+}
+.build-table-card th:nth-child(5) {
+  width: 160px;
+}
+.build-table-card th:nth-child(7) {
+  width: 104px;
+}
 
 .build-name,
 .model-cell {
@@ -117,8 +135,14 @@
   gap: 8px;
 }
 
-.status-pill.draft { color: #52525b; background: #f4f4f5; }
-.status-pill.retired { color: #9a3412; background: #fff7ed; }
+.status-pill.draft {
+  color: #52525b;
+  background: #f4f4f5;
+}
+.status-pill.retired {
+  color: #9a3412;
+  background: #fff7ed;
+}
 
 .table-action-button {
   display: inline-flex;
@@ -138,8 +162,16 @@
   white-space: nowrap;
 }
 
-.table-action-button:hover { border-color: #b8a5e8; background: #f0ebff; }
-.table-action-button:disabled { border-color: var(--border); color: #a1a1aa; background: #f4f4f5; cursor: not-allowed; }
+.table-action-button:hover {
+  border-color: #b8a5e8;
+  background: #f0ebff;
+}
+.table-action-button:disabled {
+  border-color: var(--border);
+  color: #a1a1aa;
+  background: #f4f4f5;
+  cursor: not-allowed;
+}
 
 .build-name > div,
 .build-context-cell,
@@ -191,11 +223,23 @@
   background: #fffbeb;
 }
 
-.build-icon.ready { color: #15803d; background: #f0fdf4; }
-.build-icon.failed { color: #b91c1c; background: #fef2f2; }
+.build-icon.ready {
+  color: #15803d;
+  background: #f0fdf4;
+}
+.build-icon.failed {
+  color: #b91c1c;
+  background: #fef2f2;
+}
 
-.status-pill.validating { color: #6d28d9; background: #f5f3ff; }
-.status-pill.ready { color: #166534; background: #f0fdf4; }
+.status-pill.validating {
+  color: #6d28d9;
+  background: #f5f3ff;
+}
+.status-pill.ready {
+  color: #166534;
+  background: #f0fdf4;
+}
 
 .build-error {
   display: block;
@@ -247,16 +291,28 @@
 }
 
 @media (max-width: 900px) {
-  .build-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .build-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
   .build-page-actions,
-  .build-context { align-items: stretch; flex-direction: column; }
-  .build-context label { justify-content: space-between; }
-  .build-context select { min-width: 0; flex: 1; }
+  .build-context {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .build-context label {
+    justify-content: space-between;
+  }
+  .build-context select {
+    min-width: 0;
+    flex: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .build-progress > div > span { transition-duration: 1ms; }
+  .build-progress > div > span {
+    transition-duration: 1ms;
+  }
 }

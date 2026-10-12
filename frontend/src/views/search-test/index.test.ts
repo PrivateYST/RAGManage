@@ -35,7 +35,7 @@ vi.mock('./index', () => ({
       loadingKnowledgeBases: shallowRef(false),
       searching: shallowRef(false),
       canSearch: computed(() => true),
-      error: shallowRef(''),
+      errorMessage: shallowRef(''),
       result: shallowRef({
         trace_id: '31',
         state: 'completed',

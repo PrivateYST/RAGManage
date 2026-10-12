@@ -17,6 +17,7 @@ import {
 import { useAppToast } from '@/composables/useToast'
 import { useAuthStore } from '@/store/auth'
 
+/** 加载当前空间的模型 Profile，并按平台/医院角色限制配置工作区。 */
 export function useModelsPage() {
   const auth = useAuthStore()
   const toast = useAppToast()
@@ -37,6 +38,10 @@ export function useModelsPage() {
   const lastHealthResult = ref<{ endpoint: ModelEndpoint; result: HealthCheckResult } | null>(null)
 
   const canManageEndpoints = computed(() => auth.user?.platform_role === 'platform_admin')
+  const canConfigureTenantKey = computed(
+    () => auth.user?.platform_role !== 'platform_admin' && auth.activeSpace?.role === 'space_admin',
+  )
+  const activeSpaceName = computed(() => auth.activeSpace?.name ?? '')
   const activeEndpoints = computed(() => endpoints.value.filter((item) => item.status === 'active'))
 
   async function loadPage(): Promise<void> {
@@ -54,7 +59,7 @@ export function useModelsPage() {
       endpoints.value = endpointResult.items
       if (!knowledgeBases.value.some((item) => item.id === selectedKnowledgeBaseId.value))
         selectedKnowledgeBaseId.value = knowledgeBases.value[0]?.id ?? ''
-      if (!canManageEndpoints.value) view.value = 'profiles'
+      if (!canManageEndpoints.value && !canConfigureTenantKey.value) view.value = 'profiles'
     } catch (cause) {
       loadError.value = cause instanceof Error ? cause.message : '模型配置加载失败'
       toast.error(loadError.value)
@@ -281,6 +286,8 @@ export function useModelsPage() {
     profiles,
     lastHealthResult,
     canManageEndpoints,
+    canConfigureTenantKey,
+    activeSpaceName,
     loadPage,
     loadProfiles,
     openCreateEndpoint,

@@ -8,6 +8,11 @@ import { computed, reactive, ref, shallowRef } from 'vue'
 import { auditActionLabel, auditActionOptions } from './enum'
 import AuditPage from './index.vue'
 
+const { mockLoad, mockResetFilters } = vi.hoisted(() => ({
+  mockLoad: vi.fn(),
+  mockResetFilters: vi.fn(),
+}))
+
 /** 页面渲染使用的已持久化 Release 发布审计样本。 */
 const auditItem: AuditLogItem = {
   id: '18',
@@ -35,16 +40,24 @@ vi.mock('./index', () => ({
     filters: reactive({ scope: 'space', actionPrefix: '', actor: '', targetType: '' }),
     loading: shallowRef(false),
     loadingMore: shallowRef(false),
-    error: shallowRef(''),
+    errorMessage: shallowRef(''),
     nextCursor: shallowRef<string | null>(null),
     selected: shallowRef<AuditLogItem | null>(null),
     isPlatformAdmin: computed(() => true),
-    load: vi.fn(),
-    resetFilters: vi.fn(),
+    load: mockLoad,
+    resetFilters: mockResetFilters,
   }),
 }))
 
 describe('audit page', () => {
+  it('submits and resets filters through page-owned query state', async () => {
+    const wrapper = mount(AuditPage)
+    await wrapper.get('form').trigger('submit')
+    expect(mockLoad).toHaveBeenCalledWith(true)
+    await wrapper.get('form button[type="button"]').trigger('click')
+    expect(mockResetFilters).toHaveBeenCalledOnce()
+  })
+
   // 回归场景：新增用户审计动作后，筛选入口和中文名称必须同步可用。
   it('exposes user-management filters and readable user audit labels', () => {
     expect(auditActionOptions).toContainEqual({ value: 'user.', label: '用户管理' })

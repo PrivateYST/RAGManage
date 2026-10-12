@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, SecretStr, field_validator
 from redis.asyncio import Redis
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.core.api_keys import decrypt_api_key, encrypt_api_key, generate_api_key
+from app.core.api_keys import decrypt_api_key, encrypt_api_key, generate_api_key, hash_api_key
 from app.core.audit import write_audit_event
 from app.core.auth import (
     SESSION_COOKIE,
@@ -512,6 +512,20 @@ class ApiKeyCreate(BaseModel):
         return normalized
 
 
+class TenantApiKeyConfiguration(BaseModel):
+    """医院管理员提交系统分配的 Key 以确认交接；请求明文不会被持久化。"""
+
+    api_key: SecretStr = Field(min_length=3, max_length=500)
+
+    @field_validator("api_key")
+    @classmethod
+    def normalize_api_key(cls, value: SecretStr) -> SecretStr:
+        """去掉复制时带入的首尾空白，并拒绝非平台签发格式。"""
+        normalized = value.get_secret_value().strip()
+        if not normalized.startswith("sk-"):
+            raise ValueError("请粘贴系统管理员分配的 sk- 格式 Key")
+        return SecretStr(normalized)
+
 class OpenWebUIKeyProvisioningError(HTTPException):
     """把远端 Open WebUI 创建失败转换为稳定的管理接口错误。"""
 
@@ -615,6 +629,12 @@ def _require_platform_admin(context: dict[str, Any]) -> None:
     """仅允许浏览器登录的平台管理员管理系统凭据，禁止 API Key 提权。"""
     if context["user"]["platform_role"] != "platform_admin" or "api_key_id" in context:
         raise HTTPException(status_code=403, detail="只有超级管理员可以管理公司 API Key")
+
+
+def _require_hospital_account(context: dict[str, Any]) -> None:
+    """医院凭据确认仅供浏览器登录的医院账号执行，平台账号负责签发。"""
+    if context["user"].get("platform_role") == "platform_admin" or "api_key_id" in context:
+        raise HTTPException(status_code=403, detail="只有医院管理员可以确认医院 API Key")
 
 
 async def _ensure_embedding_profile(
@@ -2233,7 +2253,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                        COALESCE(usage_totals.prompt_tokens, 0)::bigint AS prompt_tokens,
                        COALESCE(usage_totals.completion_tokens, 0)::bigint
                          AS completion_tokens,
-                       ak.expires_at, ak.last_used_at, ak.created_at, ak.revoked_at
+                       ak.expires_at, ak.last_used_at, ak.created_at, ak.revoked_at,
+                       ak.configured_at
                 FROM api_keys ak
                 JOIN tenants t ON t.id = ak.tenant_id
                 LEFT JOIN LATERAL (
@@ -2355,7 +2376,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                       provider_user_id, provider_user_email, provider_user_password
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                     RETURNING id::text, tenant_id::text, name, key_prefix, token_limit,
-                              token_used, token_reserved, expires_at, created_at
+                              token_used, token_reserved, expires_at, created_at, configured_at
                     """,
                     payload.tenant_id,
                     payload.name,
@@ -3982,6 +4003,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                        current_key.token_limit AS api_key_token_limit,
                        current_key.token_used AS api_key_token_used,
                        current_key.token_remaining AS api_key_token_remaining,
+                       current_key.configured_at AS api_key_configured_at,
                        current_key.expires_at AS api_key_expires_at
                 FROM tenants t LEFT JOIN tenant_members tm
                   ON tm.tenant_id = t.id AND tm.status = 'active'
@@ -3996,6 +4018,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                          ak.token_used,
                          GREATEST(0, ak.token_limit - ak.token_used - ak.token_reserved)
                            AS token_remaining,
+                         ak.configured_at,
                          ak.expires_at
                   FROM api_keys ak
                   WHERE ak.tenant_id = t.id AND ak.deleted_at IS NULL
@@ -4004,11 +4027,133 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ) current_key ON true
                 GROUP BY t.id, current_key.id, current_key.status, current_key.key_prefix,
                          current_key.token_limit, current_key.token_used,
-                         current_key.token_remaining, current_key.expires_at
+                         current_key.token_remaining, current_key.configured_at,
+                         current_key.expires_at
                 ORDER BY t.created_at DESC
                 """
             )
             return {"items": _rows(rows)}
+        finally:
+            await connection.close()
+
+    @app.get("/api/v1/spaces/{tenant_id}/api-key/configuration")
+    async def get_tenant_api_key_configuration(
+        tenant_id: int,
+        request: Request,
+    ) -> dict[str, Any]:
+        """返回当前医院最新一把 Key 的脱敏状态，确认前不读取任何明文。"""
+        context = await _authenticated_user(config, request)
+        _require_hospital_account(context)
+        connection = await _database(config)
+        try:
+            await _require_space_admin(connection, context, tenant_id)
+            row = await connection.fetchrow(
+                """
+                SELECT ak.key_prefix, ak.configured_at,
+                       CASE WHEN tenant.status <> 'active' THEN 'disabled'
+                            WHEN ak.status = 'active' AND ak.expires_at IS NOT NULL
+                                 AND ak.expires_at <= now() THEN 'expired'
+                            ELSE ak.status END AS status
+                FROM api_keys ak
+                JOIN tenants tenant ON tenant.id = ak.tenant_id
+                WHERE ak.tenant_id = $1 AND ak.deleted_at IS NULL
+                ORDER BY ak.created_at DESC, ak.id DESC
+                LIMIT 1
+                """,
+                tenant_id,
+            )
+            if row is None:
+                return {
+                    "configured": False,
+                    "key_prefix": None,
+                    "status": None,
+                    "configured_at": None,
+                }
+            return {
+                "configured": row["configured_at"] is not None,
+                "key_prefix": row["key_prefix"],
+                "status": row["status"],
+                "configured_at": row["configured_at"],
+            }
+        finally:
+            await connection.close()
+
+    @app.post("/api/v1/spaces/{tenant_id}/api-key/configuration")
+    async def confirm_tenant_api_key_configuration(
+        tenant_id: int,
+        payload: TenantApiKeyConfiguration,
+        request: Request,
+    ) -> dict[str, Any]:
+        """核验医院管理员粘贴的 Key 属于当前医院，再记录无明文的交接确认。"""
+        context = await _authenticated_user(config, request)
+        _require_hospital_account(context)
+        connection = await _database(config)
+        raw_key = payload.api_key.get_secret_value()
+        try:
+            async with connection.transaction():
+                await _require_space_admin(connection, context, tenant_id)
+                row = await connection.fetchrow(
+                    """
+                    SELECT ak.id, ak.key_prefix, ak.status, ak.expires_at,
+                           ak.token_limit, ak.token_used, ak.token_reserved,
+                           ak.configured_at, tenant.status AS tenant_status
+                    FROM api_keys ak
+                    JOIN tenants tenant ON tenant.id = ak.tenant_id
+                    WHERE ak.tenant_id = $1 AND ak.key_hash = $2
+                      AND ak.deleted_at IS NULL
+                      AND ak.id = (
+                        SELECT current_key.id FROM api_keys current_key
+                        WHERE current_key.tenant_id = $1 AND current_key.deleted_at IS NULL
+                        ORDER BY current_key.created_at DESC, current_key.id DESC
+                        LIMIT 1
+                      )
+                    FOR UPDATE OF ak
+                    """,
+                    tenant_id,
+                    hash_api_key(raw_key),
+                )
+                if row is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="此 Key 与系统为当前医院分配的最新 Key 不匹配",
+                    )
+                is_usable = (
+                    row["tenant_status"] == "active"
+                    and row["status"] == "active"
+                    and (row["expires_at"] is None or row["expires_at"] > datetime.now(UTC))
+                    and row["token_used"] + row["token_reserved"] < row["token_limit"]
+                )
+                if not is_usable:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="当前医院 Key 已停用、过期或额度不足，请联系系统管理员",
+                    )
+                configured_at = row["configured_at"]
+                if configured_at is None:
+                    configured_at = await connection.fetchval(
+                        """
+                        UPDATE api_keys SET configured_at = now(), configured_by = $2
+                        WHERE id = $1 AND configured_at IS NULL
+                        RETURNING configured_at
+                        """,
+                        row["id"],
+                        int(context["user"]["id"]),
+                    )
+                    await write_audit_event(
+                        connection,
+                        tenant_id=tenant_id,
+                        actor_id=int(context["user"]["id"]),
+                        action="api_key.configure",
+                        target_type="api_key",
+                        target_id=row["id"],
+                        summary={"configured": True},
+                    )
+            return {
+                "configured": True,
+                "key_prefix": row["key_prefix"],
+                "status": "active",
+                "configured_at": configured_at,
+            }
         finally:
             await connection.close()
 

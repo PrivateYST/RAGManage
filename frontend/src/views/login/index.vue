@@ -1,27 +1,9 @@
-<!-- 登录页只负责收集凭据和提交认证；登录后的默认业务入口由动态路由守卫决定。 -->
+<!-- 登录页负责品牌入口和凭据表单；认证状态与提交流程由页面逻辑模块维护。 -->
 <script setup lang="ts">
-import { computed, shallowRef } from 'vue'
-import { useRouter } from 'vue-router'
-import { useAppToast } from '@/composables/useToast'
-import { useAuthStore } from '@/store/auth'
+import { useLoginPage } from './index'
+import './index.scss'
 
-const router = useRouter()
-const auth = useAuthStore()
-const toast = useAppToast()
-const loginName = shallowRef('')
-const password = shallowRef('')
-const submitted = shallowRef(false)
-const canSubmit = computed(
-  () => loginName.value.trim().length > 0 && password.value.length > 0 && !auth.loading,
-)
-
-/** 提交登录凭据；失败消息通过全局 Toast 告知，不在表单下堆叠临时提示条。 */
-async function submit(): Promise<void> {
-  submitted.value = true
-  if (!canSubmit.value) return
-  if (await auth.signIn(loginName.value.trim(), password.value)) await router.push('/')
-  else toast.error(auth.error || '登录失败，请稍后重试')
-}
+const { auth, form, submitted, canSubmit, submit } = useLoginPage()
 </script>
 
 <template>
@@ -89,11 +71,11 @@ async function submit(): Promise<void> {
           >
           <input
             id="login-name"
-            v-model="loginName"
+            v-model="form.loginName"
             class="h-[40px] w-full rounded-md border border-border bg-background px-[11px] text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
             autocomplete="username"
             placeholder="请输入账号"
-            :aria-invalid="submitted && !loginName.trim() ? 'true' : 'false'"
+            :aria-invalid="submitted && !form.loginName.trim() ? 'true' : 'false'"
             :aria-describedby="submitted && !canSubmit ? 'login-error' : undefined"
           />
           <label class="mb-[6px] mt-[14px] text-xs font-medium text-[#3f3f46]" for="login-password"
@@ -101,12 +83,12 @@ async function submit(): Promise<void> {
           >
           <input
             id="login-password"
-            v-model="password"
+            v-model="form.password"
             class="h-[40px] w-full rounded-md border border-border bg-background px-[11px] text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
             type="password"
             autocomplete="current-password"
             placeholder="请输入密码"
-            :aria-invalid="submitted && !password ? 'true' : 'false'"
+            :aria-invalid="submitted && !form.password ? 'true' : 'false'"
             :aria-describedby="submitted && !canSubmit ? 'login-error' : undefined"
           />
           <p

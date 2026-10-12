@@ -1,3 +1,4 @@
+/** 工作台页逻辑：按当前空间并行载入知识库、任务和基础服务摘要。 */
 import type { DashboardHealthState } from './type'
 /**
  * 工作台页逻辑：并行读取当前空间的知识库、任务和基础服务状态，
@@ -79,5 +80,6 @@ export function useDashboardPage() {
     loading,
     errorMessage,
     serviceReady,
+    loadDashboard,
   }
 }

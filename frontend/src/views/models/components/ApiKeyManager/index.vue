@@ -7,6 +7,7 @@ import ApiKeyRevealDialog from '../ApiKeyRevealDialog/index.vue'
 import ApiKeyTable from '../ApiKeyTable/index.vue'
 import ApiKeyUsagePanel from '../ApiKeyUsagePanel/index.vue'
 import { useApiKeyManager } from './index'
+import './index.scss'
 
 const emit = defineEmits<{ configure: [] }>()
 const {

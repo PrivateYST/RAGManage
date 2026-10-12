@@ -44,6 +44,7 @@ const companyKey: CompanyApiKey = {
   last_used_at: '2026-09-20T00:00:00Z',
   created_at: '2026-09-20T00:00:00Z',
   revoked_at: null,
+  configured_at: null,
 }
 
 const createdKey: CreatedApiKey = { ...companyKey, raw_key: 'sk-once-only-secret' }

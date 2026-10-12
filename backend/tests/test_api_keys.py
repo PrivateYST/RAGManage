@@ -125,6 +125,7 @@ class FakeManagementConnection:
             "token_reserved": 0,
             "expires_at": None,
             "created_at": "2026-09-20T00:00:00Z",
+            "configured_at": None,
         }
 
     async def execute(self, query: str, *args: object) -> None:

@@ -1,10 +1,10 @@
 <!-- API Key 请求流水同时展示总账和嵌入、生成模型的分项 Token。 -->
 <script setup lang="ts">
 import type { ApiKeyUsagePanelProps } from './type'
-import type { AppTableColumn } from '@/components'
 import { computed } from 'vue'
 import { AppTable } from '@/components'
-import { useApiKeyUsagePanel } from './index'
+import { apiKeyUsageColumns, formatApiKeyUsageDate, useApiKeyUsagePanel } from './index'
+import './index.scss'
 
 const props = defineProps<ApiKeyUsagePanelProps>()
 const { sourceLabel } = useApiKeyUsagePanel()
@@ -12,15 +12,6 @@ const daily = computed(() => props.daily ?? [])
 const monthly = computed(() => props.monthly ?? [])
 const dailyTotal = computed(() => daily.value.reduce((sum, item) => sum + item.total_tokens, 0))
 const monthlyTotal = computed(() => monthly.value.reduce((sum, item) => sum + item.total_tokens, 0))
-const columns: AppTableColumn<import('@/api/apiKeys').ApiKeyUsageRow>[] = [
-  { key: 'time', title: '时间' },
-  { key: 'models', title: '模型分项' },
-  { key: 'prompt', title: '输入' },
-  { key: 'completion', title: '输出' },
-  { key: 'total', title: '合计' },
-  { key: 'source', title: '来源' },
-  { key: 'status', title: '状态' },
-]
 </script>
 
 <template>
@@ -78,7 +69,7 @@ const columns: AppTableColumn<import('@/api/apiKeys').ApiKeyUsageRow>[] = [
     <div class="overflow-x-auto">
       <AppTable
         :rows="items"
-        :columns="columns"
+        :columns="apiKeyUsageColumns"
         row-key="request_id"
         :loading="loading"
         loading-text="正在加载用量…"
@@ -86,7 +77,7 @@ const columns: AppTableColumn<import('@/api/apiKeys').ApiKeyUsageRow>[] = [
         class="w-full min-w-[760px] text-left"
       >
         <template #cell-time="{ row: item }">
-          {{ new Date(item.created_at).toLocaleString() }}
+          {{ formatApiKeyUsageDate(item.created_at) }}
         </template>
         <template #cell-models="{ row: item }">
           <span v-if="item.model_usage.embedding"

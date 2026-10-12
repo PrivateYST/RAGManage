@@ -1,7 +1,9 @@
 <!-- 工作台视图只负责布局与组件编排，数据请求和派生状态由同目录逻辑模块维护。 -->
 <script setup lang="ts">
 import { ArrowUpRight, Bot, FileText, Layers3, ListChecks, Plus } from '@/components'
+import PilotNotice from './components/PilotNotice/index.vue'
 import { useDashboardPage } from './index'
+import './index.scss'
 
 const {
   currentSpace,
@@ -221,20 +223,6 @@ const {
         </div>
       </section>
     </div>
-    <div
-      class="flex items-center gap-[12px] rounded-md border border-primary/20 bg-primary/5 px-[14px] py-[12px] text-primary max-sm:flex-col max-sm:items-start max-sm:gap-[6px]"
-    >
-      <span class="shrink-0 text-[11px] font-semibold">试点提示</span>
-      <p class="mb-0 flex-1 text-[11px] text-primary/80">
-        当前工作空间使用公司内网模型服务。回答仅基于已发布资料，无法找到证据时会明确提示资料不足。
-      </p>
-      <RouterLink
-        class="inline-flex items-center gap-[4px] text-[11px] font-semibold text-primary"
-        to="/chat"
-      >
-        去提问
-        <ArrowUpRight :size="14" />
-      </RouterLink>
-    </div>
+    <PilotNotice />
   </section>
 </template>

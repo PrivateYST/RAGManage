@@ -1,4 +1,5 @@
 /** 知识问答页面逻辑：编排知识库、会话、流式运行和反馈状态，并向视图暴露显式动作。 */
+import type { ChatPageState } from './type'
 import type { KnowledgeBaseRow } from '@/api/admin'
 import type {
   ChatMessageRow,
@@ -7,7 +8,7 @@ import type {
   GenerationRun,
   SseMessage,
 } from '@/api/chat'
-import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import { fetchKnowledgeBases } from '@/api/admin'
 import {
   cancelRun,
@@ -30,7 +31,8 @@ function requestId(): string {
   return crypto.randomUUID()
 }
 
-export function useChatRun() {
+/** 编排空间隔离下的会话、消息生成流、引用和回答反馈。 */
+export function useChatRun(): ChatPageState {
   const auth = useAuthStore()
   const toast = useAppToast()
   const knowledgeBases = ref<KnowledgeBaseRow[]>([])
@@ -347,4 +349,29 @@ export function useChatRun() {
     closeCitations,
     feedback,
   }
+}
+
+/** 管理消息视口滚动：新消息自动跟随，但尊重用户主动向上查看历史的行为。 */
+export function useChatViewport(
+  messages: Readonly<import('vue').Ref<ChatMessageRow[]>>,
+  knowledgeBaseId: Readonly<import('vue').Ref<string>>,
+) {
+  const messageViewport = useTemplateRef<HTMLElement>('messageViewport')
+  const disabledReason = computed(() => (knowledgeBaseId.value ? '' : '当前空间暂无可访问知识库'))
+  const latestMessageContent = computed(() => messages.value.at(-1)?.content ?? '')
+  let shouldFollowStream = true
+
+  function onMessageScroll(): void {
+    const viewport = messageViewport.value
+    if (!viewport) return
+    shouldFollowStream = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 56
+  }
+
+  watch([() => messages.value.length, latestMessageContent], async () => {
+    if (!shouldFollowStream) return
+    await nextTick()
+    if (messageViewport.value) messageViewport.value.scrollTop = messageViewport.value.scrollHeight
+  })
+
+  return { messageViewport, disabledReason, onMessageScroll }
 }
