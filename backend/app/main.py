@@ -2891,9 +2891,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     detail=f"模型不在网关白名单中：{'、'.join(sorted(unknown_models))}",
                 )
             values["allowed_models"] = json.dumps(models, ensure_ascii=False)
-        role_values = {key: values.pop(key) for key in ("platform_role_code", "tenant_id", "tenant_role_code") if key in values}
-        if "tenant_id" in role_values and role_values["tenant_id"] is not None and not role_values.get("tenant_role_code"):
-            raise HTTPException(status_code=400, detail="分配空间时必须指定空间角色")
         assignments: list[str] = []
         parameters: list[Any] = [endpoint_id]
         for index, (key, value) in enumerate(values.items(), 2):
@@ -3875,6 +3872,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="没有需要修改的字段")
         if user_id == int(context["user"]["id"]) and values.get("status") == "disabled":
             raise HTTPException(status_code=400, detail="不能停用当前登录账号")
+        role_values = {
+            key: values.pop(key)
+            for key in ("platform_role_code", "tenant_id", "tenant_role_code")
+            if key in values
+        }
+        if (
+            "tenant_id" in role_values
+            and role_values["tenant_id"] is not None
+            and not role_values.get("tenant_role_code")
+        ):
+            raise HTTPException(status_code=400, detail="分配空间时必须指定空间角色")
         assignments: list[str] = []
         parameters: list[Any] = [user_id]
         for index, (key, value) in enumerate(values.items(), 2):

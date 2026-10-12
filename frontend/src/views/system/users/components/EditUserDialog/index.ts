@@ -39,7 +39,7 @@ export function useEditUserDialog(getUser: () => UserRow | null, tenants: Tenant
     if (!user) return false
     saving.value = true
     try {
-      await updateUser(user.id, {
+      const payload = {
         display_name: displayName.value.trim(),
         ...(password.value ? { password: password.value } : {}),
         platform_role_code: roleLevel.value === 'company_admin' ? 'platform_admin' : null,
@@ -51,7 +51,21 @@ export function useEditUserDialog(getUser: () => UserRow | null, tenants: Tenant
                 tenant_role_code: roleLevel.value === 'hospital_admin' ? 'space_admin' : 'customer_reader',
               }
             : { tenant_id: null, tenant_role_code: null }),
-      })
+      }
+      await updateUser(user.id, payload)
+      // 列表接口不返回成员角色，编辑成功后重读详情确认角色和空间归属已经持久化。
+      const savedDetail = await fetchUserDetail(user.id)
+      const activeMembership = savedDetail.memberships.find(item => item.status === 'active')
+      const expectedPlatformRole = roleLevel.value === 'company_admin' ? 'platform_admin' : null
+      const expectedTenantRole = roleLevel.value === 'hospital_admin' ? 'space_admin' : 'customer_reader'
+      if (
+        savedDetail.user.platform_role !== expectedPlatformRole
+        || (roleLevel.value !== 'company_admin'
+          && (activeMembership?.tenant_id !== (tenantId.value || undefined)
+            || activeMembership?.role_code !== (tenantId.value ? expectedTenantRole : undefined)))
+      ) {
+        throw new Error('用户资料已提交，但角色回读不一致；请刷新后检查后端服务版本')
+      }
       toast.success('用户资料已更新')
       return true
     } catch (cause) {
