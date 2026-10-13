@@ -629,15 +629,35 @@ async def _database(settings: Settings) -> asyncpg.Connection:
 
 
 def _require_platform_admin(context: dict[str, Any]) -> None:
-    """仅允许浏览器登录的平台管理员管理系统凭据，禁止 API Key 提权。"""
+    """仅允许浏览器登录的平台管理员管理平台级资源，禁止 API Key 提权。"""
     if context["user"]["platform_role"] != "platform_admin" or "api_key_id" in context:
-        raise HTTPException(status_code=403, detail="只有超级管理员可以管理公司 API Key")
+        raise HTTPException(status_code=403, detail="只有平台管理员可以管理此资源")
 
 
 def _require_hospital_account(context: dict[str, Any]) -> None:
     """医院凭据确认仅供浏览器登录的医院账号执行，平台账号负责签发。"""
     if context["user"].get("platform_role") == "platform_admin" or "api_key_id" in context:
         raise HTTPException(status_code=403, detail="只有医院管理员可以确认医院 API Key")
+
+
+async def _require_space_management_actor(
+    connection: asyncpg.Connection, context: dict[str, Any]
+) -> bool:
+    """允许平台管理员或至少一个空间管理员进入空间管理；返回是否为平台管理员。"""
+    if context["user"].get("platform_role") == "platform_admin":
+        return True
+    is_admin = await connection.fetchval(
+        """
+        SELECT EXISTS (
+          SELECT 1 FROM tenant_members tm JOIN roles r ON r.id = tm.role_id
+          WHERE tm.user_id = $1 AND tm.status = 'active' AND r.code = 'space_admin'
+        )
+        """,
+        int(context["user"]["id"]),
+    )
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="只有系统管理员或空间管理员可以管理空间")
+    return False
 
 
 async def _ensure_embedding_profile(
@@ -3119,6 +3139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/v1/profiles")
     async def list_profiles(knowledge_base_id: int, request: Request) -> dict[str, Any]:
         context = await _authenticated_user(config, request)
+        _require_platform_admin(context)
         connection = await _database(config)
         try:
             access = await _require_knowledge_base_role(
@@ -3198,6 +3219,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         """创建知识库不可变解析 Profile；重复定义复用且不重复写审计。"""
         context = await _authenticated_user(config, request)
+        _require_platform_admin(context)
         connection = await _database(config)
         try:
             access = await _require_knowledge_base_role(
@@ -3386,6 +3408,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         """创建知识库不可变运行 Profile，审计只记录引用和哈希而不保存回答规则正文。"""
         context = await _authenticated_user(config, request)
+        _require_platform_admin(context)
         connection = await _database(config)
         try:
             access = await _require_knowledge_base_role(
@@ -3499,6 +3522,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def activate_runtime_profile(profile_id: int, request: Request) -> dict[str, Any]:
         """激活知识库 Runtime Profile，并记录旧值、新值及是否需要重新构建。"""
         context = await _authenticated_user(config, request)
+        _require_platform_admin(context)
         connection = await _database(config)
         try:
             target = await connection.fetchrow(
@@ -4010,18 +4034,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/v1/admin/tenants", status_code=201)
     async def create_tenant(payload: TenantCreate, request: Request) -> dict[str, Any]:
         context = await _authenticated_user(config, request)
-        if context["user"]["platform_role"] != "platform_admin":
-            raise HTTPException(status_code=403, detail="只有平台管理员可以创建客户空间")
         connection = await _database(config)
         try:
+            is_platform_admin = await _require_space_management_actor(connection, context)
             try:
                 async with connection.transaction():
-                    row = await connection.fetchrow(
-                        "INSERT INTO tenants(code, name) VALUES ($1, $2) "
-                        "RETURNING id::text, code, name, status, created_at",
-                        payload.code,
-                        payload.name,
-                    )
+                    if not is_platform_admin:
+                        # 对用户行加锁串行化额度检查，避免两个并发请求同时越过单空间上限。
+                        await connection.fetchval(
+                            "SELECT id FROM users WHERE id = $1 FOR UPDATE",
+                            int(context["user"]["id"]),
+                        )
+                        created_count = await connection.fetchval(
+                            "SELECT count(*) FROM tenants WHERE created_by = $1",
+                            int(context["user"]["id"]),
+                        )
+                        if int(created_count or 0) >= 1:
+                            raise HTTPException(
+                                status_code=409,
+                                detail="空间管理员最多只能额外创建一个空间",
+                            )
+                        row = await connection.fetchrow(
+                            "INSERT INTO tenants(code, name, created_by) VALUES ($1, $2, $3) "
+                            "RETURNING id::text, code, name, status, created_at",
+                            payload.code,
+                            payload.name,
+                            int(context["user"]["id"]),
+                        )
+                    else:
+                        row = await connection.fetchrow(
+                            "INSERT INTO tenants(code, name) VALUES ($1, $2) "
+                            "RETURNING id::text, code, name, status, created_at",
+                            payload.code,
+                            payload.name,
+                        )
                     space_admin_role_id = await connection.fetchval(
                         "SELECT id FROM roles WHERE code = 'space_admin'"
                     )
@@ -4044,14 +4090,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/v1/admin/tenants")
     async def admin_tenants(request: Request) -> dict[str, Any]:
-        """返回客户空间及其当前凭据摘要，供平台管理员配置和发放客户 Key。"""
+        """返回可管理空间；平台管理员看全部，空间管理员只看已分配空间及自己的额外空间。"""
         context = await _authenticated_user(config, request)
-        if context["user"]["platform_role"] != "platform_admin":
-            raise HTTPException(status_code=403, detail="只有平台管理员可以查看客户空间")
         connection = await _database(config)
         try:
+            is_platform_admin = await _require_space_management_actor(connection, context)
+            user_id = int(context["user"]["id"])
+            scope_clause = "" if is_platform_admin else (
+                "AND EXISTS (SELECT 1 FROM tenant_members scoped_tm "
+                "WHERE scoped_tm.tenant_id = t.id AND scoped_tm.user_id = $1 "
+                "AND scoped_tm.status = 'active')"
+            )
+            args: tuple[Any, ...] = () if is_platform_admin else (user_id,)
             rows = await connection.fetch(
-                """
+                f"""
                 SELECT t.id::text, t.code, t.name, t.status, t.created_at,
                        count(DISTINCT tm.user_id)::int AS member_count,
                        count(DISTINCT kb.id)::int AS knowledge_base_count,
@@ -4083,14 +4135,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                   ORDER BY ak.created_at DESC, ak.id DESC
                   LIMIT 1
                 ) current_key ON true
+                WHERE 1 = 1 {scope_clause}
                 GROUP BY t.id, current_key.id, current_key.status, current_key.key_prefix,
                          current_key.token_limit, current_key.token_used,
                          current_key.token_remaining, current_key.configured_at,
                          current_key.expires_at
                 ORDER BY t.created_at DESC
-                """
+                """,
+                *args,
             )
-            return {"items": _rows(rows)}
+            created_count = 0 if is_platform_admin else await connection.fetchval(
+                "SELECT count(*) FROM tenants WHERE created_by = $1", user_id
+            )
+            return {
+                "items": _rows(rows),
+                "can_create": is_platform_admin or int(created_count or 0) < 1,
+                "created_space_count": int(created_count or 0),
+            }
         finally:
             await connection.close()
 

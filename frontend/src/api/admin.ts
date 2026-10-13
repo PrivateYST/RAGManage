@@ -148,7 +148,11 @@ export function fetchUsers(): Promise<{ items: UserRow[] }> {
   return apiRequest('/api/v1/admin/users')
 }
 
-export function fetchTenants(): Promise<{ items: TenantRow[] }> {
+export function fetchTenants(): Promise<{
+  items: TenantRow[]
+  can_create?: boolean
+  created_space_count?: number
+}> {
   return apiRequest('/api/v1/admin/tenants')
 }
 

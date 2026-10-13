@@ -7,10 +7,13 @@ import { AppTable, Copy, KeyRound, Plus } from '@/components'
 import ApiKeyCreateDialog from '@/views/models/components/ApiKeyCreateDialog/index.vue'
 import ApiKeyRevealDialog from '@/views/models/components/ApiKeyRevealDialog/index.vue'
 import CreateSpaceDialog from './components/CreateSpaceDialog/index.vue'
+import TenantApiKeyDialog from './components/TenantApiKeyDialog/index.vue'
 import { useSpacesPage } from './index'
 
 const {
   tenants,
+  canCreateSpace,
+  isPlatformAdmin,
   loading,
   loadError,
   showCreateDialog,
@@ -23,6 +26,7 @@ const {
   createSpace,
   openKeyDialog,
   saveTenantKey,
+  finishTenantKeyConfiguration,
   copyTenantKey,
   closeKeyReveal,
   toast,
@@ -69,7 +73,7 @@ onMounted(() => void loadTenants())
         <h1>空间管理</h1>
         <p class="page-description">创建客户空间并查看成员与知识库使用情况。</p>
       </div>
-      <button class="primary-button" type="button" @click="showCreateDialog = true">
+      <button v-if="canCreateSpace" class="primary-button" type="button" @click="showCreateDialog = true">
         <Plus :size="16" />新建空间
       </button>
     </div>
@@ -122,7 +126,15 @@ onMounted(() => void loadTenants())
         }}</template>
         <template #cell-actions="{ row }">
           <button
-            v-if="!row.api_key_id && row.status === 'active'"
+            v-if="!isPlatformAdmin && row.api_key_id && row.status === 'active'"
+            class="table-action inline-flex items-center gap-[4px]"
+            type="button"
+            @click="openKeyDialog(row)"
+          >
+            <KeyRound :size="13" />填写 Key
+          </button>
+          <button
+            v-else-if="isPlatformAdmin && !row.api_key_id && row.status === 'active'"
             class="table-action inline-flex items-center gap-[4px]"
             type="button"
             @click="openKeyDialog(row)"
@@ -130,7 +142,7 @@ onMounted(() => void loadTenants())
             <KeyRound :size="13" />配置 Key
           </button>
           <button
-            v-else-if="row.api_key_id"
+            v-else-if="isPlatformAdmin && row.api_key_id"
             class="table-action inline-flex items-center gap-[4px]"
             type="button"
             @click="copyTenantKey(row)"
@@ -149,11 +161,20 @@ onMounted(() => void loadTenants())
     @submit="handleCreate"
   />
   <ApiKeyCreateDialog
+    v-if="isPlatformAdmin"
     :open="tenantKeyDialogOpen"
     :tenants="selectedTenantForKey ? [selectedTenantForKey] : []"
     :submitting="tenantKeySubmitting"
     @close="tenantKeyDialogOpen = false"
     @submit="saveTenantKey"
+  />
+  <TenantApiKeyDialog
+    v-if="!isPlatformAdmin && selectedTenantForKey"
+    :open="tenantKeyDialogOpen"
+    :tenant-id="selectedTenantForKey.id"
+    :tenant-name="selectedTenantForKey.name"
+    @close="tenantKeyDialogOpen = false"
+    @configured="finishTenantKeyConfiguration"
   />
   <ApiKeyRevealDialog
     :api-key="revealedTenantKey"

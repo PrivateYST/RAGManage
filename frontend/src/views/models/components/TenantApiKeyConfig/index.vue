@@ -6,8 +6,14 @@ import { KeyRound, RefreshCw, ShieldCheck } from '@/components'
 import { useTenantApiKeyConfig } from './index'
 
 const props = defineProps<TenantApiKeyConfigProps>()
+const emit = defineEmits<{ configured: [] }>()
 const { configuration, loading, submitting, apiKey, showApiKey, error, canSubmit, load, submit } =
   useTenantApiKeyConfig(toRef(props, 'tenantId'))
+
+/** 确认成功后通知外层弹窗关闭；失败时保留输入和错误信息便于修正。 */
+async function handleSubmit(): Promise<void> {
+  if (await submit()) emit('configured')
+}
 </script>
 
 <template>
@@ -78,7 +84,7 @@ const { configuration, loading, submitting, apiKey, showApiKey, error, canSubmit
       <form
         class="flex flex-col gap-[10px]"
         :aria-busy="submitting ? 'true' : 'false'"
-        @submit.prevent="submit"
+        @submit.prevent="handleSubmit"
       >
         <label
           class="flex flex-col gap-[6px] text-xs font-medium text-foreground"

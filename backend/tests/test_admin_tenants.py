@@ -81,6 +81,12 @@ class FakeTenantListConnection:
             }
         ]
 
+    async def fetchval(self, query: str, *args: object) -> int:
+        """平台管理员列表不需要个人额外空间计数，保留测试接口完整性。"""
+        assert "SELECT count(*) FROM tenants WHERE created_by" in query
+        assert args == (7,)
+        return 0
+
     async def close(self) -> None:
         self.closed = True
 

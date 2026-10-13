@@ -10,7 +10,7 @@ const emit = defineEmits<{
   close: []
   submit: [form: { code: string; name: string }]
 }>()
-const { form, reset } = useCreateSpaceDialog()
+const { form, reset, handleCodeInput } = useCreateSpaceDialog()
 
 /** 创建成功后的关闭由父级控制，失败时表单保留以便修正重试。 */
 function submitForm(): void {
@@ -47,9 +47,13 @@ watch(
           required
           minlength="2"
           maxlength="64"
-          pattern="[a-z0-9][a-z0-9_-]+"
+          pattern="[a-zA-Z0-9][a-zA-Z0-9_-]+"
           placeholder="例如 customer-a"
+          @input="handleCodeInput"
       /></label>
+      <small class="text-[11px] text-muted-foreground">
+        编码仅支持字母、数字、短横线和下划线；大写字母会自动转为小写。
+      </small>
       <div class="dialog-actions">
         <button type="button" class="secondary-button" @click="emit('close')">取消</button>
         <button class="primary-button" :disabled="saving">

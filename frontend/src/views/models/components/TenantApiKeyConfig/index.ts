@@ -50,23 +50,25 @@ export function useTenantApiKeyConfig(tenantId: Ref<string>) {
   }
 
   /** 将粘贴的 Key 发给当前医院范围的校验接口，成功后立即清除本地明文。 */
-  async function submit(): Promise<void> {
+  async function submit(): Promise<boolean> {
     const tenantIdAtStart = tenantId.value
     const normalizedKey = apiKey.value.trim()
-    if (!tenantIdAtStart || !canSubmit.value || !normalizedKey) return
+    if (!tenantIdAtStart || !canSubmit.value || !normalizedKey) return false
 
     submitting.value = true
     error.value = ''
     try {
       const result = await confirmTenantApiKeyConfiguration(tenantIdAtStart, normalizedKey)
-      if (tenantId.value !== tenantIdAtStart) return
+      if (tenantId.value !== tenantIdAtStart) return false
       configuration.value = result
       apiKey.value = ''
       toast.success('医院 API Key 已确认配置', '系统只保留交接状态，不保存或回显 Key 明文。')
+      return true
     } catch (cause) {
-      if (tenantId.value !== tenantIdAtStart) return
+      if (tenantId.value !== tenantIdAtStart) return false
       error.value = cause instanceof Error ? cause.message : '医院 API Key 配置确认失败'
       toast.error(error.value)
+      return false
     } finally {
       submitting.value = false
     }

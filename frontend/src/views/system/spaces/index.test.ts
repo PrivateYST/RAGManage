@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({
   error: vi.fn(),
   refreshContext: vi.fn(),
   setActiveSpace: vi.fn(),
+  user: { platform_role: 'platform_admin' as string | null },
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -34,6 +35,7 @@ vi.mock('@/composables/useToast', () => ({
 }))
 vi.mock('@/store/auth', () => ({
   useAuthStore: () => ({
+    user: api.user,
     refreshContext: api.refreshContext,
     setActiveSpace: api.setActiveSpace,
   }),
@@ -64,6 +66,7 @@ function tenant(overrides: Partial<TenantRow> = {}): TenantRow {
 describe('customer spaces migration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    api.user.platform_role = 'platform_admin'
     api.fetchTenants.mockResolvedValue({ items: [] })
     api.createTenant.mockResolvedValue(tenant())
     api.refreshContext.mockResolvedValue(undefined)
@@ -79,7 +82,7 @@ describe('customer spaces migration', () => {
   it('refreshes auth context and selects the new space after creation', async () => {
     const page = useSpacesPage()
 
-    await expect(page.createSpace({ code: 'hospital-a', name: '医院 A' })).resolves.toBe(true)
+    await expect(page.createSpace({ code: 'Hospital-A', name: '医院 A' })).resolves.toBe(true)
 
     expect(api.createTenant).toHaveBeenCalledWith({ code: 'hospital-a', name: '医院 A' })
     expect(api.refreshContext).toHaveBeenCalledOnce()
@@ -106,6 +109,17 @@ describe('customer spaces migration', () => {
     expect(page.tenantKeyDialogOpen.value).toBe(false)
     page.openKeyDialog(tenant())
     expect(page.tenantKeyDialogOpen.value).toBe(true)
+  })
+
+  it('lets a space administrator confirm an assigned key but never generate one', () => {
+    api.user.platform_role = null
+    const page = useSpacesPage()
+
+    page.openKeyDialog(tenant({ api_key_id: 'assigned-key' }))
+
+    expect(page.isPlatformAdmin).toBe(false)
+    expect(page.tenantKeyDialogOpen.value).toBe(true)
+    expect(api.createApiKey).not.toHaveBeenCalled()
   })
 
   it('reads and copies a full key only after an explicit request', async () => {

@@ -137,6 +137,20 @@ def test_non_platform_user_cannot_manage_model_endpoints(monkeypatch: Any) -> No
     assert response.status_code == 403
 
 
+def test_space_admin_cannot_open_model_profile_management_api(monkeypatch: Any) -> None:
+    """空间管理员即使绕过隐藏导航，也不能读取模型服务配置页面的数据接口。"""
+    context = {"user": {"id": "8", "platform_role": None}, "spaces": []}
+    database = AsyncMock()
+    monkeypatch.setattr("app.main._authenticated_user", AsyncMock(return_value=context))
+    monkeypatch.setattr("app.main._database", database)
+
+    with TestClient(create_app(Settings())) as client:
+        response = client.get("/api/v1/profiles?knowledge_base_id=3")
+
+    assert response.status_code == 403
+    database.assert_not_awaited()
+
+
 def test_platform_admin_can_replace_model_gateway_key_without_echoing_secret(
     monkeypatch: Any,
 ) -> None:

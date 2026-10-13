@@ -19,6 +19,30 @@ function stubCookie(value: string): void {
 }
 
 describe('apiRequest CSRF protection', () => {
+  it('formats structured validation errors instead of showing object object', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            detail: [
+              {
+                loc: ['body', 'code'],
+                msg: 'String should match pattern',
+                type: 'string_pattern_mismatch',
+              },
+            ],
+          }),
+          { status: 422 },
+        ),
+      ),
+    )
+
+    await expect(apiRequest('/api/v1/example')).rejects.toThrow(
+      '空间编码仅支持小写字母、数字、短横线和下划线，且至少 2 位',
+    )
+  })
+
   it('bootstraps a token for an existing session before sending a write request', async () => {
     const fetchMock = vi
       .fn()

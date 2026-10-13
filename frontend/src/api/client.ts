@@ -6,6 +6,24 @@ const CSRF_BOOTSTRAP_PATH = '/api/v1/auth/csrf'
 const CSRF_COOKIE_NAME = 'ragmanage_csrf'
 const CSRF_HEADER_NAME = 'X-CSRF-Token'
 
+/** 将 FastAPI 的文本、校验数组或结构化错误整理为可直接展示的消息。 */
+function formatApiErrorDetail(detail: unknown): string | null {
+  if (typeof detail === 'string') return detail
+  if (!Array.isArray(detail)) return null
+
+  const messages = detail.flatMap((entry: unknown) => {
+    if (typeof entry !== 'object' || entry === null) return []
+    const issue = entry as { loc?: unknown[]; msg?: unknown; type?: unknown }
+    if (typeof issue.msg !== 'string') return []
+    const field = issue.loc?.at(-1)
+    if (field === 'code' && issue.type === 'string_pattern_mismatch')
+      return ['空间编码仅支持小写字母、数字、短横线和下划线，且至少 2 位']
+    const fieldLabel = field === 'code' ? '空间编码' : field === 'name' ? '空间名称' : null
+    return [fieldLabel ? `${fieldLabel}：${issue.msg}` : issue.msg]
+  })
+  return messages.length ? [...new Set(messages)].join('；') : null
+}
+
 /** 读取指定的非 HttpOnly Cookie；缺少 DOM 时视为没有可复用 token。 */
 function readableCookie(name: string): string | null {
   /** Cookie 名为常量，但仍按 RFC cookie 分隔符匹配，避免相似前缀误命中。 */
@@ -62,8 +80,10 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     headers,
   })
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { detail?: string }
-    throw new Error(body.detail ?? `请求失败（${response.status}）`)
+    const body = (await response.json().catch(() => ({}))) as { detail?: unknown }
+    throw new Error(
+      formatApiErrorDetail(body.detail) ?? `请求失败（${response.status}）`,
+    )
   }
   if (response.status === 204) return undefined as T
   return (await response.json()) as T

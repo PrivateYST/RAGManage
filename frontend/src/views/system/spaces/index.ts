@@ -22,13 +22,17 @@ export function useSpacesPage() {
   const tenantKeyDialogOpen = ref(false)
   const tenantKeySubmitting = ref(false)
   const revealedTenantKey = ref<CreatedApiKey | null>(null)
+  const canCreateSpace = ref(false)
+  const isPlatformAdmin = auth.user?.platform_role === 'platform_admin'
 
   /** 加载权威空间列表；错误同时保留页面重试入口。 */
   async function loadTenants(): Promise<void> {
     loading.value = true
     loadError.value = ''
     try {
-      tenants.value = (await fetchTenants()).items
+      const result = await fetchTenants()
+      tenants.value = result.items
+      canCreateSpace.value = Boolean(result.can_create ?? isPlatformAdmin)
     } catch (cause) {
       loadError.value = cause instanceof Error ? cause.message : '空间列表加载失败'
       toast.error(loadError.value)
@@ -41,7 +45,7 @@ export function useSpacesPage() {
   async function createSpace(form: { code: string; name: string }): Promise<boolean> {
     savingTenant.value = true
     try {
-      const tenant = await createTenant(form)
+      const tenant = await createTenant({ ...form, code: form.code.trim().toLowerCase() })
       await auth.refreshContext()
       auth.setActiveSpace(tenant.id)
       toast.success('客户空间已创建')
@@ -57,7 +61,13 @@ export function useSpacesPage() {
 
   /** 只允许为启用且尚无 Key 的空间打开配置表单。 */
   function openKeyDialog(tenant: TenantRow): void {
-    if (tenant.status !== 'active' || tenant.api_key_id) return
+    if (tenant.status !== 'active') return
+    if (!isPlatformAdmin) {
+      selectedTenantForKey.value = tenant
+      tenantKeyDialogOpen.value = true
+      return
+    }
+    if (tenant.api_key_id) return
     selectedTenantForKey.value = tenant
     tenantKeyDialogOpen.value = true
   }
@@ -77,6 +87,12 @@ export function useSpacesPage() {
     }
   }
 
+  /** 交接组件确认成功后关闭弹窗并刷新列表的最新配置状态。 */
+  async function finishTenantKeyConfiguration(): Promise<void> {
+    tenantKeyDialogOpen.value = false
+    await loadTenants()
+  }
+
   /** 通过受保护接口取回完整 Key 并复制；列表状态始终只包含脱敏前缀。 */
   async function copyTenantKey(tenant: TenantRow): Promise<void> {
     if (!tenant.api_key_id) return
@@ -91,6 +107,8 @@ export function useSpacesPage() {
 
   return {
     tenants,
+    canCreateSpace,
+    isPlatformAdmin,
     loading,
     loadError,
     showCreateDialog,
@@ -103,6 +121,7 @@ export function useSpacesPage() {
     createSpace,
     openKeyDialog,
     saveTenantKey,
+    finishTenantKeyConfiguration,
     copyTenantKey,
     closeKeyReveal: () => {
       revealedTenantKey.value = null
