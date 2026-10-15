@@ -50,7 +50,7 @@ function handleSubmit(): void {
           调整方式
           <select
             v-model="form.operation"
-            class="h-9 rounded-md border border-input bg-background px-3 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            class="h-[36px] rounded-md border border-input bg-background px-3 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             :disabled="busy"
             aria-label="选择额度调整方式"
           >
@@ -68,7 +68,7 @@ function handleSubmit(): void {
             step="1"
             required
             inputmode="numeric"
-            class="h-9 rounded-md border border-input bg-background px-3 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            class="h-[36px] rounded-md border border-input bg-background px-3 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             :disabled="busy || maxAmount < 1"
             :aria-invalid="error ? 'true' : 'false'"
             :aria-describedby="error ? 'api-key-quota-error' : 'api-key-quota-help'"

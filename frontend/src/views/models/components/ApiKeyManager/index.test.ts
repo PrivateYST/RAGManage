@@ -240,6 +240,19 @@ describe('api key manager', () => {
     expect(document.body.textContent).not.toContain('保存额度')
   })
 
+  it('keeps the quota adjustment controls at the standard 36px height', async () => {
+    const wrapper = mount(ApiKeyManager)
+    await flushPromises()
+    const quotaButton = wrapper.findAll('button').find((button) => button.text().includes('额度'))
+    await quotaButton?.trigger('click')
+
+    const form = document.body.querySelector<HTMLFormElement>('form')
+    const select = form?.querySelector('select')
+    const input = form?.querySelector('input')
+    expect(select?.className).toContain('h-[36px]')
+    expect(input?.className).toContain('h-[36px]')
+  })
+
   it('rejects reducing more than the available balance and accepts the exact limit', async () => {
     const wrapper = mount(ApiKeyManager)
     await flushPromises()
