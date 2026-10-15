@@ -1,13 +1,15 @@
 <!-- 单条问答消息：呈现内容、状态和回答动作，通过事件交由工作区执行。 -->
 <script setup lang="ts">
 import type { ChatMessageEmits, ChatMessageProps } from './type'
+import { defineAsyncComponent } from 'vue'
 import { BookOpen, RefreshCw, ThumbsDown, ThumbsUp, UserRound } from '@/components'
-import MarkdownContent from '../MarkdownContent/index.vue'
 import { useChatMessage } from './index'
 
 defineProps<ChatMessageProps>()
-
 const emit = defineEmits<ChatMessageEmits>()
+
+// Markdown 引擎体积较大，仅在出现助手正文时加载，聊天页空会话不承担渲染器下载成本。
+const MarkdownContent = defineAsyncComponent(() => import('../MarkdownContent/index.vue'))
 
 const { stateLabel, outcomeLabel } = useChatMessage()
 </script>

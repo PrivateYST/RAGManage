@@ -2,7 +2,7 @@
 
 /** 对话页面回归覆盖真实组件联动：通过输入区提交，并展示问答结果引用定位。 */
 
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref, shallowRef } from 'vue'
 import ChatPage from './index.vue'
@@ -139,10 +139,14 @@ describe('chat page', () => {
     expect(testState.sendQuestion).toHaveBeenCalledOnce()
   })
 
-  it('shows validated answer citations and source position', () => {
+  it('shows validated answer citations and source position', async () => {
     const wrapper = mount(ChatPage, {
       global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
     })
+
+    // Markdown renderer is loaded only when an assistant message contains content.
+    await vi.dynamicImportSettled()
+    await flushPromises()
 
     expect(wrapper.text()).toContain('请持出院通知单办理结算。[证据 1]')
     expect(wrapper.text()).toContain('住院服务指南.md')

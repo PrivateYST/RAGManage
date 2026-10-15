@@ -25,4 +25,42 @@ export default defineConfig({
       },
     },
   },
+  /**
+   * 生产构建策略：保留路由级懒加载，并将高复用或重量级依赖拆成稳定的共享 chunk。
+   * 这样浏览器可以缓存基础依赖，Markdown 和表格依赖也不会被合并回首屏入口。
+   */
+  build: {
+    target: 'es2022',
+    cssCodeSplit: true,
+    sourcemap: false,
+    reportCompressedSize: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined
+          }
+
+          if (
+            id.includes('/markdown-it/') ||
+            id.includes('/markstream-vue/') ||
+            id.includes('/dompurify/')
+          ) {
+            return 'markdown'
+          }
+          if (id.includes('/@tanstack/vue-table/')) {
+            return 'table'
+          }
+          if (id.includes('/reka-ui/') || id.includes('/@iconify/')) {
+            return 'ui'
+          }
+          if (id.includes('/vue/') || id.includes('/vue-router/') || id.includes('/pinia/')) {
+            return 'vue-core'
+          }
+
+          return undefined
+        },
+      },
+    },
+  },
 })

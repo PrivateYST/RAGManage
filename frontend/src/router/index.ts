@@ -4,30 +4,19 @@
  * 后端返回的菜单只携带路径与权限元数据，组件映射仍由前端维护，避免服务端
  * 任意字符串被当作可执行模块加载。业务路由在登录态恢复后注册，退出登录时清理。
  */
-import type { Component } from 'vue'
-import type { RouteLocationRaw, Router, RouteRecordRaw, RouterHistory } from 'vue-router'
+import type {
+  RouteComponent,
+  RouteLocationRaw,
+  Router,
+  RouteRecordRaw,
+  RouterHistory,
+} from 'vue-router'
 import type { MenuItem } from '@/api/auth'
 import { createRouter, createWebHistory } from 'vue-router'
 import AppShell from '@/layouts/AppShell.vue'
 import { useAuthStore } from '@/store/auth'
-import AuditPage from '@/views/audit/index.vue'
-import BuildsPage from '@/views/builds/index.vue'
-import ChatPage from '@/views/chat/index.vue'
-import DashboardPage from '@/views/dashboard/index.vue'
-import DocumentsPage from '@/views/documents/index.vue'
-import EnvironmentPage from '@/views/environment/index.vue'
-import KnowledgeBasesPage from '@/views/knowledge-bases/index.vue'
 import LoginPage from '@/views/login/index.vue'
-import MembersPage from '@/views/members/index.vue'
-import ModelsPage from '@/views/models/index.vue'
 import NotFoundPage from '@/views/not-found/index.vue'
-import RuntimeStatusPage from '@/views/runtime-status/index.vue'
-import SearchTestPage from '@/views/search-test/index.vue'
-import MenusManagementPage from '@/views/system/menus/index.vue'
-import RolesManagementPage from '@/views/system/roles/index.vue'
-import SpacesManagementPage from '@/views/system/spaces/index.vue'
-import UserManagementPage from '@/views/system/users/index.vue'
-import TasksPage from '@/views/tasks/index.vue'
 
 const APP_SHELL_ROUTE_NAME = 'app-shell'
 const LOGIN_PATH = '/login'
@@ -36,24 +25,29 @@ const NOT_FOUND_PATH = '/404'
 const BACKSLASH_PATTERN = /\\/g
 const TRAILING_SLASH_PATTERN = /\/+$/
 
-/** 后端 route 到本地页面组件的白名单，防止任意接口值参与模块加载。 */
-export const routeComponents: Record<string, Component> = {
-  '/dashboard': DashboardPage,
-  '/knowledge-bases': KnowledgeBasesPage,
-  '/documents': DocumentsPage,
-  '/releases': BuildsPage,
-  '/chat': ChatPage,
-  '/search-test': SearchTestPage,
-  '/tasks': TasksPage,
-  '/members': MembersPage,
-  '/system/spaces': SpacesManagementPage,
-  '/system/users': UserManagementPage,
-  '/system/roles': RolesManagementPage,
-  '/system/menus': MenusManagementPage,
-  '/system/audit': AuditPage,
-  '/system/models': ModelsPage,
-  '/system/status': RuntimeStatusPage,
-  '/system/environment': EnvironmentPage,
+/**
+ * 后端 route 到本地异步组件的白名单。
+ *
+ * 只保留登录、404 和工作台壳层在首屏同步加载；业务页面在首次进入时按路由下载，
+ * 防止聊天 Markdown、管理表格等重依赖进入首屏包，同时拒绝服务端任意字符串参与模块加载。
+ */
+export const routeComponents: Record<string, RouteComponent> = {
+  '/dashboard': () => import('@/views/dashboard/index.vue'),
+  '/knowledge-bases': () => import('@/views/knowledge-bases/index.vue'),
+  '/documents': () => import('@/views/documents/index.vue'),
+  '/releases': () => import('@/views/builds/index.vue'),
+  '/chat': () => import('@/views/chat/index.vue'),
+  '/search-test': () => import('@/views/search-test/index.vue'),
+  '/tasks': () => import('@/views/tasks/index.vue'),
+  '/members': () => import('@/views/members/index.vue'),
+  '/system/spaces': () => import('@/views/system/spaces/index.vue'),
+  '/system/users': () => import('@/views/system/users/index.vue'),
+  '/system/roles': () => import('@/views/system/roles/index.vue'),
+  '/system/menus': () => import('@/views/system/menus/index.vue'),
+  '/system/audit': () => import('@/views/audit/index.vue'),
+  '/system/models': () => import('@/views/models/index.vue'),
+  '/system/status': () => import('@/views/runtime-status/index.vue'),
+  '/system/environment': () => import('@/views/environment/index.vue'),
 }
 
 /** 只有登录、404 和兜底页是静态路由，业务 children 由菜单接口动态补充。 */
@@ -98,13 +92,13 @@ export interface DynamicRouteManager {
 interface MenuRouteCandidate {
   menu: MenuItem
   path: string
-  component: Component
+  component: RouteComponent
 }
 
 interface UnresolvedMenuRouteCandidate {
   menu: MenuItem
   path: string
-  component: Component | undefined
+  component: RouteComponent | undefined
 }
 
 function isSupportedMenuRoute(
