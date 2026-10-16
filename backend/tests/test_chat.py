@@ -15,6 +15,7 @@ from starlette.requests import Request
 from app.core.config import Settings
 from app.main import _api_key_route_allowed, _create_generation_run, create_app
 from app.rag.chat import (
+    NO_ANSWER_TEXT,
     _combined_usage,
     _persist_completed_answer,
     aggregate_embedding_usage,
@@ -258,6 +259,132 @@ def test_generated_answer_without_valid_citation_is_refused() -> None:
     assert outcome == "no_answer"
     assert citations == []
     assert content == "生成结果没有提供可验证引用，已拒绝展示。"
+
+
+def test_generated_scope_refusal_with_citations_is_refused() -> None:
+    """模型明确说明资料未覆盖问题时，不能因附带引用而伪装成已回答。"""
+    content, citations, outcome = validate_generated_answer(
+        "规范没有直接规定 2026 年某省平台的接口字段，无法据此回答。[证据 1]",
+        {1},
+    )
+
+    assert outcome == "no_answer"
+    assert citations == []
+    assert content == NO_ANSWER_TEXT
+
+
+def test_generated_scope_refusal_without_direct_phrase_is_refused() -> None:
+    """模型以“没有找到该规范的依据”解释范围边界时，也必须进入拒答终态。"""
+    content, citations, outcome = validate_generated_answer(
+        "没有找到该规范直接规定 2026 年某省平台接口字段的依据。[证据 1]",
+        {1},
+    )
+
+    assert outcome == "no_answer"
+    assert citations == []
+    assert content == NO_ANSWER_TEXT
+
+
+def test_partial_uncertainty_with_supported_conclusion_remains_answered() -> None:
+    """回答包含局部否定但仍给出证据支持的结论时，不能被范围拒答规则吞掉。"""
+    content, citations, outcome = validate_generated_answer(
+        "规范没有规定地方收费标准，但明确要求每年开展 9 次咨询活动。[证据 1]",
+        {1},
+    )
+
+    assert outcome == "answered"
+    assert citations == [1]
+    assert "9 次" in content
+
+
+def test_grounded_generation_streams_only_validated_final_answer(monkeypatch: Any) -> None:
+    """拒答归一后不能让流式客户端先收到模型原文和已删除的引用。"""
+    connection = FakeAssistantStreamConnection()
+    queued = {
+        "id": "41",
+        "tenant_id": "7",
+        "knowledge_base_id": "9",
+        "conversation_id": "13",
+        "active_release_id": "5",
+        "state": "queued",
+        "question": "某项规定是否适用？",
+    }
+    completed = {**queued, "state": "completed", "answer": NO_ANSWER_TEXT}
+    retrieval = {
+        "state": "completed",
+        "trace_id": "trace-1",
+        "trace_ids": ["trace-1"],
+        "items": [
+            {
+                "evidence_no": 1,
+                "context_included": True,
+                "document_id": 7,
+                "document_version_id": 8,
+                "chunk_id": 9,
+                "locator": {"page": 1},
+            }
+        ],
+        "context": "无关背景证据",
+        "knowledge_base_count": 1,
+        "mode": "knowledge_base",
+    }
+
+    class GroundedClient:
+        """生成包含带引用拒答原文的测试模型。"""
+
+        class ClientSettings:
+            generation_model = "test-model"
+            generation_max_tokens = 64
+
+        def __init__(self, settings: Settings) -> None:
+            """提供与正式网关一致的设置属性。"""
+            self.settings = self.ClientSettings()
+
+        async def stream_chat_events(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            temperature: float,
+            max_tokens: int | None = None,
+        ) -> Any:
+            """先产生未校验的拒答正文，再给出网关用量尾帧。"""
+            yield {
+                "text": "规范没有直接规定某项规则，无法据此回答。[证据 1]",
+                "usage": None,
+            }
+            yield {
+                "text": "",
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 8,
+                    "total_tokens": 18,
+                },
+            }
+
+    monkeypatch.setattr("app.rag.chat.asyncpg.connect", AsyncMock(return_value=connection))
+    monkeypatch.setattr(
+        "app.rag.chat.load_run_snapshot", AsyncMock(side_effect=[queued, completed])
+    )
+    monkeypatch.setattr("app.rag.chat.ModelGatewayClient", GroundedClient)
+    monkeypatch.setattr("app.rag.chat.execute_vector_search", AsyncMock(return_value=retrieval))
+    monkeypatch.setattr("app.rag.chat._persist_completed_answer", AsyncMock(return_value=True))
+
+    async def collect() -> list[str]:
+        return [
+            event
+            async for event in stream_generation_run(
+                Settings(database_url="postgresql://test"), run_id=41, user_id=3
+            )
+        ]
+
+    events = asyncio.run(collect())
+    tokens = [
+        json.loads(event.split("data: ", 1)[1])["text"]
+        for event in events
+        if event.startswith("event: token")
+    ]
+
+    assert tokens == [NO_ANSWER_TEXT]
 
 
 def test_source_conflict_requires_citations_from_both_sides() -> None:
@@ -538,6 +665,7 @@ def test_assistant_general_question_skips_knowledge_base_retrieval(monkeypatch: 
             max_tokens: int | None = None,
         ) -> Any:
             """记录最终生成上下文，并返回一段可结算的流。"""
+            assert max_tokens == 64
             build_messages.append(messages)
             yield {"text": "你好，有什么可以帮你？", "usage": None}
             yield {

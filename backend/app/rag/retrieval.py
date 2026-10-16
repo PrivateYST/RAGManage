@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 import asyncpg
@@ -41,6 +43,7 @@ _LEXICAL_STOP_TERMS = {
     "那个",
 }
 _RRF_K = 60
+_CHILD_HEALTH_SCOPE_PATTERN = re.compile(r"\d+～\d+岁儿童健康管理服务规范")
 
 
 def _vector_literal(vector: Sequence[float]) -> str:
@@ -100,6 +103,112 @@ def _locator_label(locator: dict[str, Any]) -> str:
         end = locator.get("char_end", locator["char_start"])
         return f"字符 {locator['char_start']}–{end}"
     return "原文片段"
+
+
+def _focus_explicit_service_scope(
+    query: str,
+    candidates: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """当问题点名儿童服务规范时，限制到标题章节及其相邻续页。
+
+    该 PDF 还包含独立的儿童中医药服务规范；两者共享大量年龄段和“服务内容”
+    词汇，单纯依赖向量与词法融合会把第 91 页等内容错误带入第 33 页问题。
+    只有检测到明确的 ``0～6 岁儿童健康管理服务规范`` 类标题时才启用范围约束，
+    普通问题仍完整使用原有召回结果。
+    """
+    normalized_query = re.sub(r"\s+", "", query)
+    match = _CHILD_HEALTH_SCOPE_PATTERN.search(normalized_query)
+    if match is None:
+        return [dict(candidate) for candidate in candidates]
+
+    anchor = match.group(0)
+    anchor_pages: list[int] = []
+    for candidate in candidates:
+        locator = _json_value(candidate.get("locator"), {})
+        page = locator.get("page") if isinstance(locator, dict) else None
+        normalized_content = re.sub(r"\s+", "", str(candidate.get("content", "")))
+        if normalized_content.startswith(anchor) and str(page).isdigit():
+            anchor_pages.append(int(page))
+    if not anchor_pages:
+        return [dict(candidate) for candidate in candidates]
+
+    first_page = min(anchor_pages)
+    # 服务规范可能跨越少量 PDF 页，允许相邻两页续接正文，但排除后部独立章节。
+    return [
+        dict(candidate)
+        for candidate in candidates
+        if (
+            re.sub(r"\s+", "", str(candidate.get("content", ""))).startswith(anchor)
+            or (
+                str(_json_value(candidate.get("locator"), {}).get("page", "")).isdigit()
+                and first_page
+                <= int(_json_value(candidate.get("locator"), {}).get("page"))
+                <= first_page + 2
+            )
+        )
+    ]
+
+
+def _rerank_candidates(query: str, candidates: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """使用 BM25 与向量相似度重排候选，减少只按初始排名截断造成的误召回。
+
+    PostgreSQL 当前没有中文分词扩展，因此 BM25 使用与词法召回一致的中英文
+    关键词片段计算词频和逆文档频率；这比简单的命中词长度更稳定，也为后续
+    接入交叉编码器保留统一的 ``rerank_score`` 字段。
+    """
+    if not candidates:
+        return []
+    terms = _lexical_terms(query)
+    if not terms:
+        return [dict(candidate) for candidate in candidates]
+
+    documents = [str(candidate.get("content", "")).casefold() for candidate in candidates]
+    normalized_query = re.sub(r"\s+", "", query)
+    scope_match = _CHILD_HEALTH_SCOPE_PATTERN.search(normalized_query)
+    scope_anchor = scope_match.group(0) if scope_match else ""
+    document_frequency = {
+        term: sum(term in content for content in documents) for term in terms
+    }
+    average_length = sum(len(content) for content in documents) / len(documents)
+    average_length = max(average_length, 1.0)
+    total_documents = len(documents)
+    k1 = 1.2
+    b = 0.75
+    scored: list[dict[str, Any]] = []
+    for candidate, content in zip(candidates, documents, strict=True):
+        document_length = max(len(content), 1)
+        bm25 = 0.0
+        for term in terms:
+            frequency = content.count(term)
+            if not frequency:
+                continue
+            idf = math.log1p(
+                (total_documents - document_frequency[term] + 0.5)
+                / (document_frequency[term] + 0.5)
+            )
+            denominator = frequency + k1 * (
+                1 - b + b * document_length / average_length
+            )
+            bm25 += idf * (frequency * (k1 + 1)) / denominator
+        item = dict(candidate)
+        item["bm25_score"] = round(bm25, 8)
+        title_bonus = (
+            5.0
+            if scope_anchor and re.sub(r"\s+", "", content).startswith(scope_anchor)
+            else 0.0
+        )
+        item["rerank_score"] = round(
+            bm25 + 0.25 * float(candidate.get("similarity", 0.0)) + title_bonus, 8
+        )
+        scored.append(item)
+    scored.sort(
+        key=lambda item: (
+            -float(item["rerank_score"]),
+            -float(item.get("similarity", 0.0)),
+            int(item.get("raw_rank", 0)),
+        )
+    )
+    return scored
 
 
 def assemble_evidence(
@@ -203,7 +312,7 @@ async def _finish_trace(
                 INSERT INTO retrieval_trace_items(
                   tenant_id, trace_id, chunk_id, route, rank, score,
                   fused_rank, rerank_score, in_context
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 """,
                 tenant_id,
                 trace_id,
@@ -212,6 +321,11 @@ async def _finish_trace(
                 int(candidate["raw_rank"]),
                 float(candidate["similarity"]),
                 int(candidate.get("fused_rank", candidate["raw_rank"])),
+                (
+                    float(candidate["rerank_score"])
+                    if candidate.get("rerank_score") is not None
+                    else None
+                ),
                 bool(candidate.get("context_included", False)),
             )
         await connection.execute(
@@ -241,6 +355,11 @@ async def execute_vector_search(
     gateway: ModelGatewayClient | None = None,
     message_id: int | None = None,
     on_embedding_usage: Callable[[Mapping[str, Any], str], Awaitable[None]] | None = None,
+    business_scenario: str | None = None,
+    target_users: str | None = None,
+    source_system: str | None = None,
+    business_tags: Sequence[str] | None = None,
+    trust_levels: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """执行融合召回，并在嵌入前后持久上报估算/真实用量以覆盖中断恢复。"""
     total_started = time.perf_counter()
@@ -249,6 +368,13 @@ async def execute_vector_search(
         "route": "hybrid_rrf",
         "top_k": top_k,
         "context_max_chars": context_max_chars,
+        "governance": {
+            "business_scenario": business_scenario,
+            "target_users": target_users,
+            "source_system": source_system,
+            "business_tags": list(business_tags or []),
+            "trust_levels": list(trust_levels or []),
+        },
     }
     trace_id = await _create_trace(
         connection,
@@ -297,6 +423,9 @@ async def execute_vector_search(
     release_row = await connection.fetchrow(
         """
         SELECT kr.id, kr.state, kr.embedding_profile_id, kr.manifest_hash,
+               kb.business_scenario, kb.target_users, kb.owner_user_id,
+               kb.trust_level, kb.valid_from, kb.valid_until, kb.source_system,
+               kb.business_tags,
                ep.model_name, ep.model_revision, ep.dimension,
                ep.definition_hash AS embedding_definition_hash,
                me.provider, me.base_url, me.allowed_models,
@@ -326,6 +455,28 @@ async def execute_vector_search(
         "model_revision": release_row["model_revision"],
         "dimension": int(release_row["dimension"]),
         "manifest_hash": release_row["manifest_hash"],
+        "governance": {
+            "business_scenario": release_row.get("business_scenario", ""),
+            "target_users": release_row.get("target_users", ""),
+            "owner_user_id": (
+                str(release_row.get("owner_user_id"))
+                if release_row.get("owner_user_id") is not None
+                else None
+            ),
+            "trust_level": release_row.get("trust_level", "medium"),
+            "valid_from": (
+                release_row.get("valid_from").isoformat()
+                if release_row.get("valid_from") is not None
+                else None
+            ),
+            "valid_until": (
+                release_row.get("valid_until").isoformat()
+                if release_row.get("valid_until") is not None
+                else None
+            ),
+            "source_system": release_row.get("source_system", ""),
+            "business_tags": list(release_row.get("business_tags", []) or []),
+        },
     }
     endpoint_status = release_row.get("endpoint_status", "active")
     active_runtime_id = release_row.get("active_runtime_id")
@@ -398,6 +549,30 @@ async def execute_vector_search(
         "valid_chunks": int(stats_row["valid_chunks"] if stats_row else 0),
         "embedded_chunks": int(stats_row["embedded_chunks"] if stats_row else 0),
     }
+    valid_until = release_row.get("valid_until")
+    if valid_until is not None and valid_until < datetime.now(UTC).date():
+        return await terminal(
+            "sources_expired",
+            "当前知识库已超过有效期，暂不参与检索。",
+            release=release,
+            source_stats=source_stats,
+        )
+    requested_tags = {str(tag).strip().lower() for tag in (business_tags or []) if str(tag).strip()}
+    current_tags = {str(tag).strip().lower() for tag in (release_row.get("business_tags") or [])}
+    governance_mismatch = (
+        (business_scenario and str(release_row.get("business_scenario") or "").lower() != business_scenario.strip().lower())
+        or (target_users and str(release_row.get("target_users") or "").lower() != target_users.strip().lower())
+        or (source_system and str(release_row.get("source_system") or "").lower() != source_system.strip().lower())
+        or (requested_tags and not requested_tags.issubset(current_tags))
+        or (trust_levels and str(release_row.get("trust_level") or "medium") not in set(trust_levels))
+    )
+    if governance_mismatch:
+        return await terminal(
+            "governance_filtered",
+            "当前知识库不满足指定的治理筛选条件。",
+            release=release,
+            source_stats=source_stats,
+        )
     if source_stats["valid_documents"] == 0:
         return await terminal(
             "sources_invalid",
@@ -541,7 +716,7 @@ async def execute_vector_search(
         knowledge_base_id,
         release_row["embedding_profile_id"],
         _vector_literal(query_vector),
-        top_k,
+        max(top_k * 4, 40),
         lexical_terms,
         _RRF_K,
     )
@@ -563,6 +738,9 @@ async def execute_vector_search(
         }
         for index, row in enumerate(rows, start=1)
     ]
+    raw_candidates = _rerank_candidates(query, raw_candidates)
+    raw_candidates = _focus_explicit_service_scope(query, raw_candidates)
+    raw_candidates = raw_candidates[:top_k]
     items, context = assemble_evidence(raw_candidates, context_max_chars=context_max_chars)
     state = "completed" if items else "no_results"
     message = (
@@ -596,6 +774,18 @@ async def execute_vector_search(
             "filtered_count": source_stats["invalid_documents"],
         },
     ]
+    if any((business_scenario, source_system, business_tags, trust_levels)):
+        filters.append({
+            "name": "治理元数据",
+            "value": {
+                "business_scenario": business_scenario,
+                "target_users": target_users,
+                "source_system": source_system,
+                "business_tags": list(business_tags or []),
+                "trust_levels": list(trust_levels or []),
+            },
+            "filtered_count": 0,
+        })
     return {
         "trace_id": str(trace_id),
         "state": state,

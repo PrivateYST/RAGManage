@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
@@ -27,6 +28,17 @@ from app.rag.retrieval import RetrievalServiceError, assemble_evidence, execute_
 CITATION_PATTERN = re.compile(r"\[证据\s*(\d+)\]")
 MARKDOWN_URL_PATTERN = re.compile(r"\[([^\]]+)]\(https?://[^)]+\)", re.IGNORECASE)
 RAW_URL_PATTERN = re.compile(r"https?://\S+", re.IGNORECASE)
+# 只匹配对所问事项的结论性拒答，避免正文中的局部不确定被误当作整题拒答。
+SCOPE_REFUSAL_PATTERN = re.compile(
+    r"(?:当前已发布知识库中)?没有找到足够依据.{0,80}"
+    r"(?:表明|证明|说明).{0,80}(?:规范|文档|资料).{0,40}"
+    r"(?:规定|收费标准|接口字段)"
+    r"|没有找到.{0,80}(?:规范|文档|资料).{0,30}(?:直接)?规定.{0,80}(?:依据|证据)"
+    r"|仅凭.{0,40}(?:不能|无法)(?:判断|确定|回答)"
+    r"|不能仅凭.{0,40}(?:判断|确定|回答)"
+    r"|无法据此回答|不能据此回答|无法回答这个问题",
+    re.IGNORECASE,
+)
 SOURCE_CONFLICT_MARKER = "[[SOURCE_CONFLICT]]"
 NO_ANSWER_TEXT = "当前已发布知识库中没有找到足够依据，暂时无法回答这个问题。"
 INVALID_CITATION_TEXT = "生成结果没有提供可验证引用，已拒绝展示。"
@@ -62,7 +74,8 @@ def build_grounded_messages(
         "你是公司知识库问答助手。只能使用给定证据回答，不得使用外部知识。"
         "每个事实结论都必须使用形如 [证据 1] 的编号引用。"
         "不得输出网址、文件链接或自行编造来源。"
-        f"证据不足时只回答：{NO_ANSWER_TEXT}"
+        f"证据不足、证据没有覆盖问题或问题超出资料范围时，只回答：{NO_ANSWER_TEXT}"
+        "有充分证据时直接简洁回答，普通问题控制在一至三句；确有多个步骤或类别时再使用列表。"
         "如果证据之间存在无法消解的冲突，请在回答开头输出 [[SOURCE_CONFLICT]]，"
         "说明冲突点，并引用冲突双方。"
     )
@@ -285,6 +298,9 @@ def validate_generated_answer(
         return sanitized, cited, "source_conflict"
     if conflict:
         return "来源冲突未同时引用冲突双方，已拒绝展示。", [], "no_answer"
+    # 结论性范围拒答优先于引用解析，防止模型用背景证据把拒答伪装成已回答。
+    if SCOPE_REFUSAL_PATTERN.search(sanitized):
+        return NO_ANSWER_TEXT, [], "no_answer"
     if sanitized == NO_ANSWER_TEXT or not sanitized:
         return NO_ANSWER_TEXT, [], "no_answer"
     if not cited:
@@ -379,7 +395,9 @@ async def load_run_snapshot(
                    citation.document_version_id::text, citation.locator,
                    document.id::text AS document_id, document.title AS document_title,
                    version.version_no, chunk.section_path, chunk.content,
-                   chunk.knowledge_base_id::text, kb.name AS knowledge_base_name
+                   chunk.knowledge_base_id::text, kb.name AS knowledge_base_name,
+                   kb.business_scenario, kb.target_users, kb.trust_level,
+                   kb.valid_from, kb.valid_until, kb.source_system, kb.business_tags
             FROM message_citations citation
             JOIN chunks chunk ON chunk.id = citation.chunk_id
               AND chunk.tenant_id = citation.tenant_id
@@ -400,6 +418,23 @@ async def load_run_snapshot(
             item = dict(citation)
             item["locator"] = _json_value(item["locator"], {})
             item["section_path"] = _json_value(item["section_path"], [])
+            item["governance"] = {
+                "business_scenario": item.pop("business_scenario", ""),
+                "target_users": item.pop("target_users", ""),
+                "trust_level": item.pop("trust_level", "medium"),
+                "valid_from": (
+                    item.pop("valid_from").isoformat()
+                    if item.get("valid_from") is not None
+                    else None
+                ),
+                "valid_until": (
+                    item.pop("valid_until").isoformat()
+                    if item.get("valid_until") is not None
+                    else None
+                ),
+                "source_system": item.pop("source_system", ""),
+                "business_tags": list(item.pop("business_tags", []) or []),
+            }
             item["source_path"] = (
                 f"/documents?knowledge_base_id={item['knowledge_base_id']}"
                 f"&document_id={item['document_id']}"
@@ -674,6 +709,28 @@ def _combined_usage(
     return usage, model_usage, " + ".join(model_names) or "unavailable"
 
 
+async def _persist_retrieval_trace_timings(
+    connection: asyncpg.Connection,
+    *,
+    tenant_id: int,
+    assistant_message_id: int,
+    timings: Mapping[str, float],
+) -> None:
+    """合并问答阶段耗时到本消息的检索 Trace，保留检索服务原有指标。"""
+    if not timings:
+        return
+    await connection.execute(
+        """
+        UPDATE retrieval_traces
+        SET timings = timings || $3::jsonb
+        WHERE tenant_id = $1 AND message_id = $2
+        """,
+        tenant_id,
+        assistant_message_id,
+        json.dumps(dict(timings), ensure_ascii=False),
+    )
+
+
 async def stream_generation_run(
     settings: Settings,
     *,
@@ -685,7 +742,7 @@ async def stream_generation_run(
 ) -> AsyncIterator[str]:
     """执行检索、生成和引用校验，并以 SSE 返回可恢复的运行事件。
 
-    ``max_tokens`` 只允许受限缩短单次 Key 输出预算；温度始终来自冻结的 Runtime Profile。
+    ``max_tokens`` 由服务端预算或兼容入口的受限请求决定；温度始终来自冻结的 Runtime Profile。
     """
     if not settings.database_url:
         yield sse_event("error", {"code": "DATABASE_NOT_CONFIGURED", "retryable": True})
@@ -702,6 +759,11 @@ async def stream_generation_run(
     prompt_tokens_estimate = 0
     generated_parts: list[str] = []
     generation_started = False
+    run_started_at: float | None = None
+    retrieval_started_at: float | None = None
+    generation_request_started_at: float | None = None
+    first_token_at: float | None = None
+    trace_timings: dict[str, float] = {}
 
     async def capture_embedding_usage(
         usage: Mapping[str, Any],
@@ -816,6 +878,7 @@ async def stream_generation_run(
                     {"code": "RUN_ALREADY_RUNNING", "retryable": True, "run": latest},
                 )
             return
+        run_started_at = time.perf_counter()
         await connection.execute(
             "UPDATE messages SET state = 'generating' WHERE id = $1 AND tenant_id = $2",
             row["assistant_message_id"],
@@ -863,6 +926,7 @@ async def stream_generation_run(
             client = ModelGatewayClient(settings)
         assistant_scope = snapshot.get("conversation_scope") == "assistant"
         history: list[dict[str, str]] = []
+        retrieval_started_at = time.perf_counter()
         if assistant_scope:
             history_rows = await connection.fetch(
                 """
@@ -979,6 +1043,15 @@ async def stream_generation_run(
             assistant_message_id=int(row["assistant_message_id"]),
             evidence=retrieval["items"],
         )
+        trace_timings["pipeline_retrieval_ms"] = round(
+            (time.perf_counter() - retrieval_started_at) * 1000, 2
+        )
+        await _persist_retrieval_trace_timings(
+            connection,
+            tenant_id=int(row["tenant_id"]),
+            assistant_message_id=int(row["assistant_message_id"]),
+            timings=trace_timings,
+        )
         cancelled_after_retrieval = await connection.fetchval(
             """
             SELECT state = 'cancelled' OR cancel_requested
@@ -1006,6 +1079,7 @@ async def stream_generation_run(
                 else NO_ANSWER_TEXT
             )
             usage = current_usage()[0]
+            answer_persist_started_at = time.perf_counter()
             completed = await _finish_without_generation(
                 connection,
                 run_id=run_id,
@@ -1019,6 +1093,18 @@ async def stream_generation_run(
                 usage=usage,
             )
             await finalize_quota("completed" if completed else "cancelled")
+            trace_timings["answer_persist_ms"] = round(
+                (time.perf_counter() - answer_persist_started_at) * 1000, 2
+            )
+            trace_timings["pipeline_total_ms"] = round(
+                (time.perf_counter() - run_started_at) * 1000, 2
+            )
+            await _persist_retrieval_trace_timings(
+                connection,
+                tenant_id=int(row["tenant_id"]),
+                assistant_message_id=int(row["assistant_message_id"]),
+                timings=trace_timings,
+            )
             latest = await load_run_snapshot(
                 connection,
                 run_id=run_id,
@@ -1059,10 +1145,12 @@ async def stream_generation_run(
             )
         generation_started = True
         await persist_quota_progress()
+        generation_request_started_at = time.perf_counter()
         async for event in client.stream_chat_events(
             messages,
             temperature=effective_temperature,
-            max_tokens=(effective_max_tokens if api_key_id is not None else None),
+            # 普通网页登录和客户 API Key 都必须遵守服务端输出上限，避免网关默认预算拖长生成。
+            max_tokens=effective_max_tokens,
         ):
             if event["usage"] is not None:
                 gateway_usage = {**event["usage"], "usage_source": "gateway"}
@@ -1071,6 +1159,8 @@ async def stream_generation_run(
             token = event["text"]
             if not token:
                 continue
+            if first_token_at is None:
+                first_token_at = time.perf_counter()
             if len(generated_parts) == 0 or len(generated_parts) % 5 == 0:
                 cancelled = await connection.fetchval(
                     """
@@ -1109,6 +1199,25 @@ async def stream_generation_run(
                         json.dumps(usage, ensure_ascii=False),
                     )
                     await finalize_quota("cancelled")
+                    if generation_request_started_at is not None:
+                        generation_finished_at = time.perf_counter()
+                        trace_timings["generation_stream_ms"] = round(
+                            (generation_finished_at - generation_request_started_at) * 1000,
+                            2,
+                        )
+                        if first_token_at is not None:
+                            trace_timings["generation_ttft_ms"] = round(
+                                (first_token_at - generation_request_started_at) * 1000, 2
+                            )
+                    trace_timings["pipeline_total_ms"] = round(
+                        (time.perf_counter() - run_started_at) * 1000, 2
+                    )
+                    await _persist_retrieval_trace_timings(
+                        connection,
+                        tenant_id=int(row["tenant_id"]),
+                        assistant_message_id=int(row["assistant_message_id"]),
+                        timings=trace_timings,
+                    )
                     latest = await load_run_snapshot(
                         connection,
                         run_id=run_id,
@@ -1121,9 +1230,20 @@ async def stream_generation_run(
             generated_parts.append(token)
             if len(generated_parts) % 5 == 0:
                 await persist_quota_progress()
-            yield sse_event("token", {"text": token})
+            # 知识库答案只有完成引用与拒答校验后才能发送，否则流式客户端无法撤回未验证正文。
+            if retrieval["state"] == "skipped":
+                yield sse_event("token", {"text": token})
 
         await persist_quota_progress()
+        generation_finished_at = time.perf_counter()
+        if generation_request_started_at is not None:
+            trace_timings["generation_stream_ms"] = round(
+                (generation_finished_at - generation_request_started_at) * 1000, 2
+            )
+            if first_token_at is not None:
+                trace_timings["generation_ttft_ms"] = round(
+                    (first_token_at - generation_request_started_at) * 1000, 2
+                )
         valid_numbers = {
             int(item["evidence_no"])
             for item in retrieval["items"]
@@ -1139,6 +1259,7 @@ async def stream_generation_run(
                 valid_numbers,
             )
         usage = current_usage()[0]
+        answer_persist_started_at = time.perf_counter()
         completed = await _persist_completed_answer(
             connection,
             run_id=run_id,
@@ -1154,6 +1275,18 @@ async def stream_generation_run(
             usage=usage,
         )
         await finalize_quota("completed" if completed else "cancelled")
+        trace_timings["answer_persist_ms"] = round(
+            (time.perf_counter() - answer_persist_started_at) * 1000, 2
+        )
+        trace_timings["pipeline_total_ms"] = round(
+            (time.perf_counter() - run_started_at) * 1000, 2
+        )
+        await _persist_retrieval_trace_timings(
+            connection,
+            tenant_id=int(row["tenant_id"]),
+            assistant_message_id=int(row["assistant_message_id"]),
+            timings=trace_timings,
+        )
         latest = await load_run_snapshot(
             connection,
             run_id=run_id,
@@ -1161,6 +1294,8 @@ async def stream_generation_run(
             api_key_tenant_id=api_key_tenant_id,
             api_key_id=api_key_id,
         )
+        if completed and retrieval["state"] != "skipped" and content:
+            yield sse_event("token", {"text": content})
         yield sse_event("done" if completed else "cancelled", {"run": latest})
     except asyncio.CancelledError:
         usage = await finalize_quota("failed")

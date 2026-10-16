@@ -223,6 +223,11 @@ def register(app: FastAPI, config: Settings) -> None:
                     ),
                     top_k=payload.top_k,
                     context_max_chars=payload.context_max_chars,
+                    business_scenario=payload.business_scenario,
+                    target_users=payload.target_users,
+                    source_system=payload.source_system,
+                    business_tags=payload.business_tags,
+                    trust_levels=payload.trust_levels,
                 )
             except RetrievalServiceError as error:
                 # 只记录检索状态和 trace 关联信息，不记录问题正文、候选片段或模型响应。

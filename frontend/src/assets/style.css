@@ -56,9 +56,12 @@ body {
   min-width: 320px;
   background: #f8fafc;
 }
-a {
-  color: inherit;
-  text-decoration: none;
+@layer base {
+  /* 基础链接重置放在 base 层，避免覆盖主按钮和语义链接自己的 Tailwind 文字颜色。 */
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 .brand-lockup {
   display: flex;

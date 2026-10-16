@@ -47,6 +47,18 @@ const emit = defineEmits<CitationPanelEmits>()
           <span class="mt-[2px] block truncate text-[8px] text-muted-foreground"
             >V{{ citation.version_no }} · {{ citation.section_path.join(' / ') || '正文' }}</span
           >
+          <span
+            v-if="citation.governance?.business_scenario || citation.governance?.source_system"
+            class="mt-[4px] block text-[8px] leading-[1.45] text-muted-foreground"
+          >
+            {{ citation.governance?.business_scenario || '未标注场景' }} ·
+            {{ citation.governance?.source_system || '来源系统未标注' }} ·
+            可信度 {{ citation.governance?.trust_level || 'medium' }}
+          </span>
+          <span
+            v-if="citation.governance?.business_tags?.length"
+            class="mt-[3px] block text-[8px] text-muted-foreground"
+          >标签：{{ citation.governance?.business_tags?.join('、') }}</span>
           <p class="my-[6px] line-clamp-4 text-[9px] leading-[1.55] text-muted-foreground">
             {{ citation.content }}
           </p>

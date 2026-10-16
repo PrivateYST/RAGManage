@@ -8,6 +8,14 @@ export interface KnowledgeBaseForm {
   name: string
   description: string
   purpose: string
+  business_scenario?: string
+  target_users?: string
+  owner_user_id?: string
+  trust_level?: 'low' | 'medium' | 'high'
+  valid_from?: string
+  valid_until?: string
+  source_system?: string
+  business_tags?: string
 }
 
 /** 列表列由页面逻辑集中维护，模板只负责呈现单元格。 */

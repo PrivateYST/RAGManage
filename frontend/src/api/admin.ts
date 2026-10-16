@@ -10,7 +10,30 @@ export interface KnowledgeBaseRow {
   active_release_id: string | null
   document_count: number
   updated_at: string
+  business_scenario?: string
+  target_users?: string
+  owner_user_id?: string | null
+  trust_level?: 'low' | 'medium' | 'high'
+  valid_from?: string | null
+  valid_until?: string | null
+  source_system?: string
+  business_tags?: string[]
 }
+
+/** 可由知识库管理员维护的治理字段集合。 */
+export type KnowledgeBaseGovernancePatch = Partial<
+  Pick<
+    KnowledgeBaseRow,
+    | 'business_scenario'
+    | 'target_users'
+    | 'owner_user_id'
+    | 'trust_level'
+    | 'valid_from'
+    | 'valid_until'
+    | 'source_system'
+    | 'business_tags'
+  >
+>
 
 export interface MenuRow {
   id: string
@@ -99,8 +122,27 @@ export function createKnowledgeBase(payload: {
   name: string
   description: string
   purpose: string
+  business_scenario?: string
+  target_users?: string
+  owner_user_id?: number | null
+  trust_level?: 'low' | 'medium' | 'high'
+  valid_from?: string | null
+  valid_until?: string | null
+  source_system?: string
+  business_tags?: string[]
 }): Promise<KnowledgeBaseRow> {
   return apiRequest('/api/v1/knowledge-bases', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+/** 更新知识库治理元数据；服务端按当前空间与知识库角色校验权限。 */
+export function updateKnowledgeBaseGovernance(
+  id: string,
+  payload: KnowledgeBaseGovernancePatch,
+): Promise<KnowledgeBaseRow> {
+  return apiRequest(`/api/v1/knowledge-bases/${id}/governance`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
 }
 
 export function fetchMenus(): Promise<{ items: MenuRow[] }> {

@@ -154,6 +154,8 @@ def test_model_client_emits_gateway_usage_tail_frame() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
         assert payload["stream_options"] == {"include_usage": True}
+        # RAG 生成必须关闭 Qwen 思考输出，避免业务回答承担无用的首字延迟。
+        assert payload["params"] == {"think": False}
         return httpx.Response(
             200,
             content=(

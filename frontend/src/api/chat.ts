@@ -29,6 +29,18 @@ export interface Citation {
   section_path: string[]
   content: string
   source_path: string
+  governance?: KnowledgeBaseGovernance
+}
+
+/** 引用所属知识库的业务治理摘要，帮助用户判断来源适用范围。 */
+export interface KnowledgeBaseGovernance {
+  business_scenario: string
+  target_users: string
+  trust_level: 'low' | 'medium' | 'high'
+  valid_from: string | null
+  valid_until: string | null
+  source_system: string
+  business_tags: string[]
 }
 
 export interface ChatMessageRow {

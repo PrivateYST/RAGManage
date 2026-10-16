@@ -39,6 +39,9 @@ def register(app: FastAPI, config: Settings) -> None:
                     """
                     SELECT kb.id::text, kb.tenant_id::text, kb.name, kb.description,
                            kb.purpose, kb.status, kb.active_release_id::text, kb.updated_at,
+                           kb.business_scenario, kb.target_users, kb.owner_user_id::text,
+                           kb.trust_level, kb.valid_from, kb.valid_until, kb.source_system,
+                           kb.business_tags,
                            count(DISTINCT d.id)::int AS document_count
                     FROM knowledge_bases kb
                     JOIN tenants tenant ON tenant.id = kb.tenant_id AND tenant.status = 'active'
@@ -56,6 +59,9 @@ def register(app: FastAPI, config: Settings) -> None:
                 """
                 SELECT kb.id::text, kb.tenant_id::text, kb.name, kb.description, kb.purpose,
                        kb.status, kb.active_release_id::text, kb.updated_at,
+                       kb.business_scenario, kb.target_users, kb.owner_user_id::text,
+                       kb.trust_level, kb.valid_from, kb.valid_until, kb.source_system,
+                       kb.business_tags,
                        count(DISTINCT d.id)::int AS document_count
                 FROM knowledge_bases kb LEFT JOIN documents d
                   ON d.tenant_id = kb.tenant_id AND d.knowledge_base_id = kb.id
@@ -104,10 +110,112 @@ def register(app: FastAPI, config: Settings) -> None:
             )
             if not can_create:
                 raise HTTPException(status_code=403, detail="当前角色不能创建知识库")
+            if payload.owner_user_id is not None:
+                owner_exists = await connection.fetchval(
+                    """
+                    SELECT EXISTS (
+                      SELECT 1 FROM tenant_members
+                      WHERE tenant_id = $1 AND user_id = $2 AND status = 'active'
+                    )
+                    """,
+                    payload.tenant_id,
+                    payload.owner_user_id,
+                )
+                if not owner_exists:
+                    raise HTTPException(status_code=400, detail="负责人不是当前空间有效成员")
             async with connection.transaction():
                 return await _create_knowledge_base(connection, payload, user_id)
         except asyncpg.UniqueViolationError as error:
             raise HTTPException(status_code=409, detail="该空间已存在同名知识库") from error
+        finally:
+            await connection.close()
+
+    @app.patch("/api/v1/knowledge-bases/{knowledge_base_id}/governance")
+    async def update_knowledge_base_governance(
+        knowledge_base_id: int,
+        payload: KnowledgeBasePatch,
+        request: Request,
+    ) -> dict[str, Any]:
+        """更新知识库治理元数据；仅空间管理员或知识库管理员可修改。"""
+        context = await _authenticated_user(config, request)
+        connection = await _database(config)
+        try:
+            access = await _require_knowledge_base_role(
+                connection, context, knowledge_base_id, {"space_admin", "kb_admin"}
+            )
+            values = payload.model_dump(exclude_unset=True)
+            if not values:
+                raise HTTPException(status_code=400, detail="没有需要修改的治理字段")
+            if payload.owner_user_id is not None:
+                owner_exists = await connection.fetchval(
+                    """
+                    SELECT EXISTS (
+                      SELECT 1 FROM tenant_members
+                      WHERE tenant_id = $1 AND user_id = $2 AND status = 'active'
+                    )
+                    """,
+                    int(access["tenant_id"]),
+                    payload.owner_user_id,
+                )
+                if not owner_exists:
+                    raise HTTPException(status_code=400, detail="负责人不是当前空间有效成员")
+            if "business_tags" in values:
+                values["business_tags"] = [str(tag).strip() for tag in values["business_tags"] if str(tag).strip()]
+                if len(values["business_tags"]) > 30 or any(len(tag) > 40 for tag in values["business_tags"]):
+                    raise HTTPException(status_code=400, detail="业务标签数量或长度超限")
+            current = await connection.fetchrow(
+                """SELECT business_scenario, target_users, owner_user_id, trust_level,
+                          valid_from, valid_until, source_system, business_tags
+                   FROM knowledge_bases WHERE id = $1 AND tenant_id = $2""",
+                knowledge_base_id,
+                int(access["tenant_id"]),
+            )
+            if current is None:
+                raise HTTPException(status_code=404, detail="知识库不存在")
+            valid_from = values.get("valid_from", current["valid_from"])
+            valid_until = values.get("valid_until", current["valid_until"])
+            if valid_from and valid_until and valid_until < valid_from:
+                raise HTTPException(status_code=400, detail="有效期截止日不能早于起始日")
+            assignments = []
+            args: list[Any] = [knowledge_base_id]
+            for index, field in enumerate(values, start=2):
+                assignments.append(f"{field} = ${index}")
+                args.append(values[field])
+            args.append(int(access["tenant_id"]))
+            async with connection.transaction():
+                row = await connection.fetchrow(
+                    f"""
+                    UPDATE knowledge_bases SET {', '.join(assignments)}, updated_at = now()
+                    WHERE id = $1 AND tenant_id = ${len(args)}
+                    RETURNING id::text, tenant_id::text, name, description, purpose, status,
+                              active_release_id::text, updated_at, business_scenario, target_users,
+                              owner_user_id::text, trust_level, valid_from, valid_until,
+                              source_system, business_tags
+                    """,
+                    *args,
+                )
+                await write_audit_event(
+                    connection,
+                    tenant_id=int(access["tenant_id"]),
+                    actor_id=int(context["user"]["id"]),
+                    action="knowledge_base.governance.update",
+                    target_type="knowledge_base",
+                    target_id=knowledge_base_id,
+                    summary={
+                        "changed_fields": sorted(values),
+                        "before": {
+                            field: str(current.get(field)) if current.get(field) is not None else None
+                            for field in values
+                        },
+                        "after": {
+                            field: str(row.get(field)) if row and row.get(field) is not None else None
+                            for field in values
+                        },
+                    },
+                )
+            if row is None:
+                raise HTTPException(status_code=404, detail="知识库不存在")
+            return dict(row)
         finally:
             await connection.close()
 

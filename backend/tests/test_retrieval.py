@@ -9,7 +9,13 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.main import create_app
-from app.rag.retrieval import _lexical_terms, assemble_evidence, execute_vector_search
+from app.rag.retrieval import (
+    _focus_explicit_service_scope,
+    _lexical_terms,
+    _rerank_candidates,
+    assemble_evidence,
+    execute_vector_search,
+)
 
 
 class FakeTransaction:
@@ -165,6 +171,57 @@ def test_lexical_terms_extracts_chinese_terms_and_latin_model_names() -> None:
     assert "key" in terms
     assert "当前" not in terms
     assert "什么" not in terms
+
+
+def test_explicit_child_service_title_excludes_child_tcm_chapter() -> None:
+    """回归真实 PDF 问题：0～6 岁章节不能混入第 91 页儿童中医药章节。"""
+    candidates = [
+        {
+            "chunk_id": "633",
+            "content": "0～6 岁儿童健康管理服务规范\n二、服务内容\n新生儿家庭访视",
+            "locator": {"page": 33},
+        },
+        {
+            "chunk_id": "635",
+            "content": "0～6 岁儿童健康管理服务规范\n（六）每次服务后及时记录相关信息。",
+            "locator": {"page": 35},
+        },
+        {
+            "chunk_id": "691",
+            "content": "0～36 个月儿童中医药健康管理服务\n二、服务内容",
+            "locator": {"page": 91},
+        },
+    ]
+
+    focused = _focus_explicit_service_scope(
+        "0～6 岁儿童健康管理服务规范服务内容是什么", candidates
+    )
+
+    assert [item["chunk_id"] for item in focused] == ["633", "635"]
+
+
+def test_bm25_reranker_prefers_exact_service_scope() -> None:
+    """BM25 重排应优先保留标题和问题关键词同时命中的规范片段。"""
+    ranked = _rerank_candidates(
+        "0～6 岁儿童健康管理服务规范服务内容",
+        [
+            {
+                "chunk_id": "691",
+                "content": "0～36 个月儿童中医药健康管理服务内容",
+                "similarity": 0.74,
+                "raw_rank": 4,
+            },
+            {
+                "chunk_id": "633",
+                "content": "0～6 岁儿童健康管理服务规范\n二、服务内容",
+                "similarity": 0.86,
+                "raw_rank": 1,
+            },
+        ],
+    )
+
+    assert ranked[0]["chunk_id"] == "633"
+    assert ranked[0]["rerank_score"] > ranked[1]["rerank_score"]
 
 
 def test_vector_search_scopes_current_release_and_persists_trace() -> None:

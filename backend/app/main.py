@@ -9,7 +9,7 @@ import logging
 import secrets
 import time
 from collections.abc import AsyncIterator, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Annotated, Any, cast
@@ -23,7 +23,7 @@ from fastapi import FastAPI, File, HTTPException, Query, Request, Response, Uplo
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from redis.asyncio import Redis
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -199,6 +199,42 @@ class KnowledgeBaseCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     description: str = Field(default="", max_length=1000)
     purpose: str = Field(default="general", min_length=2, max_length=80)
+    business_scenario: str = Field(default="", max_length=240)
+    target_users: str = Field(default="", max_length=240)
+    owner_user_id: int | None = None
+    trust_level: str = Field(default="medium", pattern=r"^(low|medium|high)$")
+    valid_from: date | None = None
+    valid_until: date | None = None
+    source_system: str = Field(default="", max_length=160)
+    business_tags: list[str] = Field(default_factory=list, max_length=30)
+
+    @model_validator(mode="after")
+    def valid_period_is_ordered(self) -> "KnowledgeBaseCreate":
+        """拒绝截止日在起始日前的治理元数据，避免检索边界含义不明确。"""
+        if self.valid_from and self.valid_until and self.valid_until < self.valid_from:
+            raise ValueError("有效期截止日不能早于起始日")
+        return self
+
+
+class KnowledgeBasePatch(BaseModel):
+    """知识库治理元数据的部分更新契约；空值用于清除可选字段。"""
+
+    business_scenario: str | None = Field(default=None, max_length=240)
+    target_users: str | None = Field(default=None, max_length=240)
+    target_users: str | None = Field(default=None, max_length=240)
+    owner_user_id: int | None = None
+    trust_level: str | None = Field(default=None, pattern=r"^(low|medium|high)$")
+    valid_from: date | None = None
+    valid_until: date | None = None
+    source_system: str | None = Field(default=None, max_length=160)
+    business_tags: list[str] | None = Field(default=None, max_length=30)
+
+    @model_validator(mode="after")
+    def valid_period_is_ordered(self) -> "KnowledgeBasePatch":
+        """校验同一请求中同时提供的有效期边界。"""
+        if self.valid_from and self.valid_until and self.valid_until < self.valid_from:
+            raise ValueError("有效期截止日不能早于起始日")
+        return self
 
 
 class SpaceMemberCreate(BaseModel):
@@ -233,10 +269,15 @@ class ReleaseRollbackRequest(BaseModel):
 
 
 class SearchTestRequest(BaseModel):
+    """检索诊断请求；治理筛选用于验证知识库业务准入条件。"""
     knowledge_base_id: int
     query: str = Field(min_length=1, max_length=2000)
     top_k: int = Field(default=10, ge=1, le=20)
     context_max_chars: int = Field(default=6000, ge=1000, le=20000)
+    business_scenario: str | None = Field(default=None, max_length=240)
+    source_system: str | None = Field(default=None, max_length=160)
+    business_tags: list[str] = Field(default_factory=list, max_length=30)
+    trust_levels: list[str] = Field(default_factory=list, max_length=3)
 
     @field_validator("query")
     @classmethod
@@ -1878,14 +1919,28 @@ async def _create_knowledge_base(
 ) -> dict[str, Any]:
     row = await connection.fetchrow(
         """
-        INSERT INTO knowledge_bases(tenant_id, name, description, purpose, created_by)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, tenant_id, name, description, purpose, status, updated_at
+        INSERT INTO knowledge_bases(
+          tenant_id, name, description, purpose, business_scenario, target_users,
+          owner_user_id, trust_level, valid_from, valid_until, source_system,
+          business_tags, created_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        RETURNING id, tenant_id, name, description, purpose, status, updated_at,
+                  business_scenario, target_users, owner_user_id, trust_level,
+                  valid_from, valid_until, source_system, business_tags
         """,
         payload.tenant_id,
         payload.name,
         payload.description,
         payload.purpose,
+        payload.business_scenario,
+        payload.target_users,
+        payload.owner_user_id or user_id,
+        payload.trust_level,
+        payload.valid_from,
+        payload.valid_until,
+        payload.source_system,
+        payload.business_tags,
         user_id,
     )
     if row is None:

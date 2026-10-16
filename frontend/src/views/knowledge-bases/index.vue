@@ -2,11 +2,12 @@
 <script setup lang="ts">
 import { AppDialog, AppTable, Plus, Search } from '@/components'
 import CreateKnowledgeBaseDialog from './components/CreateKnowledgeBaseDialog/index.vue'
+import GovernanceDialog from './components/GovernanceDialog/index.vue'
 import { useKnowledgeBasesPage } from './index'
 import './index.scss'
 
 const page = useKnowledgeBasesPage()
-const { rows, loading, loadError, dialogOpen, saving, form, columns, auth } = page
+const { rows, loading, loadError, dialogOpen, saving, form, columns, auth, editDialogOpen, editSaving, editingRow, members, editForm } = page
 
 /** 用户关闭/取消弹窗时直接更新页面响应状态，不触发提交请求。 */
 function closeDialog(): void {
@@ -56,6 +57,11 @@ function closeDialog(): void {
           </div>
         </template>
         <template #cell-documents="{ row }">{{ row.document_count }} 篇</template>
+        <template #cell-business_scenario="{ row }">{{ row.business_scenario || '未标注' }}</template>
+        <template #cell-trust_level="{ row }">
+          {{ row.trust_level === 'high' ? '高' : row.trust_level === 'low' ? '低' : '中' }}
+        </template>
+        <template #cell-source_system="{ row }">{{ row.source_system || '未标注' }}</template>
         <template #cell-status="{ row }">
           <span class="status-pill" :class="[row.status]">
             {{ row.status === 'published' ? '已发布' : row.status }}
@@ -64,6 +70,7 @@ function closeDialog(): void {
         <template #cell-updated="{ row }">{{
           new Date(row.updated_at).toLocaleDateString('zh-CN')
         }}</template>
+        <template #cell-actions="{ row }"><button class="secondary-button" type="button" @click="page.openGovernanceDialog(row)">治理设置</button></template>
       </AppTable>
     </div>
   </section>
@@ -81,5 +88,8 @@ function closeDialog(): void {
       @cancel="closeDialog"
       @submit="page.saveKnowledgeBase"
     />
+  </AppDialog>
+  <AppDialog :open="editDialogOpen" title="编辑治理元数据" content-class="w-[min(520px,calc(100vw-2rem))]" @close="editDialogOpen = false">
+    <GovernanceDialog v-if="editingRow" :form="editForm" :members="members" :saving="editSaving" :name="editingRow.name" @cancel="editDialogOpen = false" @submit="page.saveGovernance" />
   </AppDialog>
 </template>

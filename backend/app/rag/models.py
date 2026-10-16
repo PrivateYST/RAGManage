@@ -262,6 +262,8 @@ class ModelGatewayClient:
             "stream": True,
             "stream_options": {"include_usage": True},
             "temperature": temperature,
+            # RAG 回答只需输出给用户的结论；Qwen 思考 token 会占掉首字延迟和生成预算。
+            "params": {"think": False},
         }
         if max_tokens is not None:
             request_payload["max_tokens"] = max_tokens
