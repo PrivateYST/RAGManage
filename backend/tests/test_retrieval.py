@@ -53,6 +53,7 @@ class FakeRetrievalConnection:
         self.execute_calls: list[tuple[Any, ...]] = []
         self.search_query = ""
         self.search_args: tuple[object, ...] = ()
+        self.wiki_rows: list[dict[str, object]] = []
 
     def transaction(self) -> FakeTransaction:
         return FakeTransaction()
@@ -91,6 +92,9 @@ class FakeRetrievalConnection:
         raise AssertionError(f"未处理的 fetchrow 查询：{query}")
 
     async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+        # 未配置 Wiki 的基线场景应维持原有召回结果，不让新增查询污染搜索断言。
+        if "FROM wiki_entries e" in query:
+            return self.wiki_rows
         self.search_query = query
         self.search_args = args
         return [
@@ -193,9 +197,7 @@ def test_explicit_child_service_title_excludes_child_tcm_chapter() -> None:
         },
     ]
 
-    focused = _focus_explicit_service_scope(
-        "0～6 岁儿童健康管理服务规范服务内容是什么", candidates
-    )
+    focused = _focus_explicit_service_scope("0～6 岁儿童健康管理服务规范服务内容是什么", candidates)
 
     assert [item["chunk_id"] for item in focused] == ["633", "635"]
 
@@ -276,6 +278,80 @@ def test_vector_search_scopes_current_release_and_persists_trace() -> None:
     assert "fused_score" in connection.search_query
     assert any("INSERT INTO retrieval_trace_items" in call[0] for call in connection.execute_calls)
     assert any("UPDATE retrieval_traces" in call[0] for call in connection.execute_calls)
+
+
+def test_wiki_evidence_survives_rerank_and_context_truncation() -> None:
+    """回归真实验收发现的问题：词条关联原文召回后不能被通用重排挤出 top_k。"""
+    connection = FakeRetrievalConnection()
+    connection.wiki_rows = [
+        {
+            "id": "8",
+            "term": "出院结算流程",
+            "aliases": ["办理出院"],
+            "version_no": 3,
+            "chunk_ids": [21],
+        }
+    ]
+    result = asyncio.run(
+        execute_vector_search(
+            connection,
+            Settings(),
+            tenant_id=7,
+            knowledge_base_id=9,
+            user_id=11,
+            query="如何办理出院？",
+            active_release_id=5,
+            top_k=1,
+            context_max_chars=2000,
+            gateway=FakeGateway(),
+        )
+    )
+    assert result["items"][0]["chunk_id"] == "21"
+    assert result["items"][0]["wiki_entries"][0]["id"] == "8"
+    assert "关联词条：出院结算流程" in result["context"]
+    assert result["wiki_entries"][0]["version_no"] == 3
+    assert connection.search_args[8] == [21]
+
+
+def test_wiki_alias_excludes_unlinked_business_evidence() -> None:
+    """命中已发布词条后，别名问答不能混入未关联的相似业务来源。"""
+
+    class MixedSources(FakeRetrievalConnection):
+        """模拟向量同时召回多个相似业务的候选。"""
+
+        async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+            """第二个候选有独立内容，确保排除不是去重造成的偶然结果。"""
+            rows = await super().fetch(query, *args)
+            if "FROM wiki_entries e" not in query:
+                rows[1]["content"] = "另一业务：出院后办理保险赔付。"
+            return rows
+
+    connection = MixedSources()
+    connection.wiki_rows = [
+        {
+            "id": "8",
+            "term": "出院结算流程",
+            "aliases": ["办理出院"],
+            "version_no": 3,
+            "chunk_ids": [21],
+        }
+    ]
+    result = asyncio.run(
+        execute_vector_search(
+            connection,
+            Settings(),
+            tenant_id=7,
+            knowledge_base_id=9,
+            user_id=11,
+            query="如何办理出院？",
+            active_release_id=5,
+            top_k=10,
+            context_max_chars=2000,
+            gateway=FakeGateway(),
+        )
+    )
+    assert [item["chunk_id"] for item in result["items"]] == ["21"]
+    assert "保险赔付" not in result["context"]
 
 
 def test_vector_search_reports_invalid_sources_without_calling_gateway() -> None:

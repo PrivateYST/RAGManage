@@ -34,6 +34,14 @@ export function useKnowledgeBasesPage() {
   const dialogOpen = ref(false)
   const saving = ref(false)
   const form = ref<KnowledgeBaseForm>({ ...EMPTY_FORM })
+  const wikiOpen = ref(false)
+  const wikiRow = ref<KnowledgeBaseRow | null>(null)
+
+  /** 冻结当前知识库上下文，避免词条误归属到其他空间。 */
+  function openWiki(row: KnowledgeBaseRow): void {
+    wikiRow.value = row
+    wikiOpen.value = true
+  }
   const editDialogOpen = ref(false)
   const editSaving = ref(false)
   const editingRow = ref<KnowledgeBaseRow | null>(null)
@@ -132,6 +140,7 @@ export function useKnowledgeBasesPage() {
     loadData,
     openCreateDialog,
     saveKnowledgeBase,
+    wikiOpen, wikiRow, openWiki,
     editDialogOpen, editSaving, editingRow, members, editForm, openGovernanceDialog, saveGovernance,
   }
 }

@@ -22,6 +22,7 @@ describe('citation panel', () => {
             section_path: ['住院服务', '出院'],
             content: '持出院通知单办理结算。',
             source_path: '/documents?document_id=document-1',
+            wiki_entries: [{ id: '1', term: '出院结算', version_no: 3 }],
           },
         ],
       },
@@ -30,6 +31,7 @@ describe('citation panel', () => {
 
     expect(wrapper.text()).toContain('住院服务指南.md')
     expect(wrapper.text()).toContain('第 18–20 行')
+    expect(wrapper.text()).toContain('出院结算 · v3（已发布）')
     await wrapper.get('[aria-label="关闭引用"]').trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)
   })

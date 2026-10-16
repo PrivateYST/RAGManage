@@ -62,6 +62,9 @@ const emit = defineEmits<CitationPanelEmits>()
           <p class="my-[6px] line-clamp-4 text-[9px] leading-[1.55] text-muted-foreground">
             {{ citation.content }}
           </p>
+          <p v-for="entry in citation.wiki_entries || []" :key="entry.id" class="mb-2 text-xs text-muted-foreground">
+            关联词条：{{ entry.term }} · v{{ entry.version_no }}（已发布）
+          </p>
           <RouterLink
             class="inline-flex items-center gap-[4px] text-[9px] text-primary"
             :to="citation.source_path"

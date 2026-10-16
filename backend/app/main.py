@@ -221,7 +221,6 @@ class KnowledgeBasePatch(BaseModel):
 
     business_scenario: str | None = Field(default=None, max_length=240)
     target_users: str | None = Field(default=None, max_length=240)
-    target_users: str | None = Field(default=None, max_length=240)
     owner_user_id: int | None = None
     trust_level: str | None = Field(default=None, pattern=r"^(low|medium|high)$")
     valid_from: date | None = None
@@ -274,6 +273,7 @@ class SearchTestRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     top_k: int = Field(default=10, ge=1, le=20)
     context_max_chars: int = Field(default=6000, ge=1000, le=20000)
+    target_users: str | None = Field(default=None, max_length=240)
     business_scenario: str | None = Field(default=None, max_length=240)
     source_system: str | None = Field(default=None, max_length=160)
     business_tags: list[str] = Field(default_factory=list, max_length=30)
@@ -1903,6 +1903,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from app.api.knowledge_routes import register as register_knowledge
     from app.api.retrieval_routes import register as register_retrieval
     from app.api.lifecycle_routes import register as register_lifecycle
+    from app.api.wiki_routes import register as register_wiki
 
     register_health_chat(app, config)
     register_identity(app, config)
@@ -1910,6 +1911,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_knowledge(app, config)
     register_retrieval(app, config)
     register_lifecycle(app, config)
+    register_wiki(app, config)
 
     return app
 

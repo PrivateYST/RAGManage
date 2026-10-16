@@ -17,6 +17,7 @@ import httpx
 from app.core.config import Settings
 from app.rag.models import ModelGatewayClient
 from app.rag.profiles import gateway_settings
+from app.rag.wiki import lookup_entries
 
 
 class RetrievalServiceError(RuntimeError):
@@ -166,9 +167,7 @@ def _rerank_candidates(query: str, candidates: Sequence[dict[str, Any]]) -> list
     normalized_query = re.sub(r"\s+", "", query)
     scope_match = _CHILD_HEALTH_SCOPE_PATTERN.search(normalized_query)
     scope_anchor = scope_match.group(0) if scope_match else ""
-    document_frequency = {
-        term: sum(term in content for content in documents) for term in terms
-    }
+    document_frequency = {term: sum(term in content for content in documents) for term in terms}
     average_length = sum(len(content) for content in documents) / len(documents)
     average_length = max(average_length, 1.0)
     total_documents = len(documents)
@@ -186,16 +185,12 @@ def _rerank_candidates(query: str, candidates: Sequence[dict[str, Any]]) -> list
                 (total_documents - document_frequency[term] + 0.5)
                 / (document_frequency[term] + 0.5)
             )
-            denominator = frequency + k1 * (
-                1 - b + b * document_length / average_length
-            )
+            denominator = frequency + k1 * (1 - b + b * document_length / average_length)
             bm25 += idf * (frequency * (k1 + 1)) / denominator
         item = dict(candidate)
         item["bm25_score"] = round(bm25, 8)
         title_bonus = (
-            5.0
-            if scope_anchor and re.sub(r"\s+", "", content).startswith(scope_anchor)
-            else 0.0
+            5.0 if scope_anchor and re.sub(r"\s+", "", content).startswith(scope_anchor) else 0.0
         )
         item["rerank_score"] = round(
             bm25 + 0.25 * float(candidate.get("similarity", 0.0)) + title_bonus, 8
@@ -248,6 +243,8 @@ def assemble_evidence(
             source = f"{knowledge_base_name} · {source}"
         if section_path:
             source += f" · {section_path}"
+        if item.get("wiki_entries"):
+            source += " · 关联词条：" + "、".join(entry["term"] for entry in item["wiki_entries"])
         source += f" · {_locator_label(item['locator'])}"
         next_evidence_no = evidence_no + 1
         prefix = f"[证据 {next_evidence_no}] {source}\n"
@@ -560,11 +557,24 @@ async def execute_vector_search(
     requested_tags = {str(tag).strip().lower() for tag in (business_tags or []) if str(tag).strip()}
     current_tags = {str(tag).strip().lower() for tag in (release_row.get("business_tags") or [])}
     governance_mismatch = (
-        (business_scenario and str(release_row.get("business_scenario") or "").lower() != business_scenario.strip().lower())
-        or (target_users and str(release_row.get("target_users") or "").lower() != target_users.strip().lower())
-        or (source_system and str(release_row.get("source_system") or "").lower() != source_system.strip().lower())
+        (
+            business_scenario
+            and str(release_row.get("business_scenario") or "").lower()
+            != business_scenario.strip().lower()
+        )
+        or (
+            target_users
+            and str(release_row.get("target_users") or "").lower() != target_users.strip().lower()
+        )
+        or (
+            source_system
+            and str(release_row.get("source_system") or "").lower() != source_system.strip().lower()
+        )
         or (requested_tags and not requested_tags.issubset(current_tags))
-        or (trust_levels and str(release_row.get("trust_level") or "medium") not in set(trust_levels))
+        or (
+            trust_levels
+            and str(release_row.get("trust_level") or "medium") not in set(trust_levels)
+        )
     )
     if governance_mismatch:
         return await terminal(
@@ -649,7 +659,27 @@ async def execute_vector_search(
         ) from error
 
     search_started = time.perf_counter()
-    lexical_terms = _lexical_terms(query)
+    # 别名只扩展关键词召回和排序；不把人工定义当作原文，也不增加查询嵌入额度。
+    wiki_entries = await lookup_entries(
+        connection,
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+        release_id=active_release_id,
+        query=query,
+    )
+    ranking_query = " ".join([query, *(entry["term"] for entry in wiki_entries)])
+    lexical_terms = _lexical_terms(ranking_query)
+    wiki_chunk_ids = list({int(cid) for entry in wiki_entries for cid in entry["chunk_ids"]})
+    profiles["wiki_entries"] = [
+        {"id": entry["id"], "term": entry["term"], "version_no": entry["version_no"]}
+        for entry in wiki_entries
+    ]
+    await connection.execute(
+        "UPDATE retrieval_traces SET profiles=$2::jsonb WHERE id=$1 AND tenant_id=$3",
+        trace_id,
+        json.dumps(profiles, ensure_ascii=False),
+        tenant_id,
+    )
     rows = await connection.fetch(
         """
         WITH eligible AS (
@@ -708,7 +738,7 @@ async def execute_vector_search(
                fused_score,
                CASE WHEN lexical_rank IS NOT NULL THEN 'hybrid' ELSE 'vector' END AS route
         FROM fused
-        ORDER BY fused_score DESC, vector_distance, id
+        ORDER BY (id = ANY($9::bigint[])) DESC, fused_score DESC, vector_distance, id
         LIMIT $6
         """,
         active_release_id,
@@ -719,6 +749,7 @@ async def execute_vector_search(
         max(top_k * 4, 40),
         lexical_terms,
         _RRF_K,
+        wiki_chunk_ids,
     )
     timings["hybrid_search_ms"] = _elapsed_ms(search_started)
     timings["vector_search_ms"] = timings["hybrid_search_ms"]
@@ -738,8 +769,23 @@ async def execute_vector_search(
         }
         for index, row in enumerate(rows, start=1)
     ]
-    raw_candidates = _rerank_candidates(query, raw_candidates)
-    raw_candidates = _focus_explicit_service_scope(query, raw_candidates)
+    if wiki_entries:
+        # 明确别名命中是经审核的证据范围，不能再把相似但未关联的业务混入答案。
+        # 仅使用仍在当前 Release 内的已关联原文；未命中词条时保留原有文档检索。
+        raw_candidates = [
+            item for item in raw_candidates if int(item["chunk_id"]) in wiki_chunk_ids
+        ]
+    raw_candidates = _rerank_candidates(ranking_query, raw_candidates)
+    if not wiki_entries:
+        raw_candidates = _focus_explicit_service_scope(ranking_query, raw_candidates)
+    # 审核通过的明确关联须在最终截断前保留；否则别名扩展会召回证据却被通用重排丢弃。
+    raw_candidates.sort(key=lambda item: int(item["chunk_id"]) not in wiki_chunk_ids)
+    for candidate in raw_candidates:
+        candidate["wiki_entries"] = [
+            {"id": entry["id"], "term": entry["term"], "version_no": entry["version_no"]}
+            for entry in wiki_entries
+            if int(candidate["chunk_id"]) in entry["chunk_ids"]
+        ]
     raw_candidates = raw_candidates[:top_k]
     items, context = assemble_evidence(raw_candidates, context_max_chars=context_max_chars)
     state = "completed" if items else "no_results"
@@ -775,17 +821,19 @@ async def execute_vector_search(
         },
     ]
     if any((business_scenario, source_system, business_tags, trust_levels)):
-        filters.append({
-            "name": "治理元数据",
-            "value": {
-                "business_scenario": business_scenario,
-                "target_users": target_users,
-                "source_system": source_system,
-                "business_tags": list(business_tags or []),
-                "trust_levels": list(trust_levels or []),
-            },
-            "filtered_count": 0,
-        })
+        filters.append(
+            {
+                "name": "治理元数据",
+                "value": {
+                    "business_scenario": business_scenario,
+                    "target_users": target_users,
+                    "source_system": source_system,
+                    "business_tags": list(business_tags or []),
+                    "trust_levels": list(trust_levels or []),
+                },
+                "filtered_count": 0,
+            }
+        )
     return {
         "trace_id": str(trace_id),
         "state": state,
@@ -798,4 +846,5 @@ async def execute_vector_search(
         "items": items,
         "embedding_usage": embedding_result["usage"],
         "embedding_model": embedding_result["model_name"],
+        "wiki_entries": profiles["wiki_entries"],
     }

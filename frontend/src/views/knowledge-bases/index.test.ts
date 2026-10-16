@@ -82,6 +82,10 @@ describe('knowledge base management migration', () => {
       name: '临床指南',
       description: '诊疗规则',
       purpose: 'rule',
+      owner_user_id: null,
+      valid_from: null,
+      valid_until: null,
+      business_tags: [],
     })
     expect(api.success).toHaveBeenCalledWith('知识库已创建')
     expect(api.fetchKnowledgeBases).toHaveBeenCalledTimes(2)

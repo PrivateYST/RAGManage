@@ -3,11 +3,27 @@
 import { AppDialog, AppTable, Plus, Search } from '@/components'
 import CreateKnowledgeBaseDialog from './components/CreateKnowledgeBaseDialog/index.vue'
 import GovernanceDialog from './components/GovernanceDialog/index.vue'
+import WikiDialog from './components/WikiDialog/index.vue'
 import { useKnowledgeBasesPage } from './index'
 import './index.scss'
 
 const page = useKnowledgeBasesPage()
-const { rows, loading, loadError, dialogOpen, saving, form, columns, auth, editDialogOpen, editSaving, editingRow, members, editForm } = page
+const { wikiOpen, wikiRow, openWiki } = page
+const {
+  rows,
+  loading,
+  loadError,
+  dialogOpen,
+  saving,
+  form,
+  columns,
+  auth,
+  editDialogOpen,
+  editSaving,
+  editingRow,
+  members,
+  editForm,
+} = page
 
 /** 用户关闭/取消弹窗时直接更新页面响应状态，不触发提交请求。 */
 function closeDialog(): void {
@@ -57,7 +73,9 @@ function closeDialog(): void {
           </div>
         </template>
         <template #cell-documents="{ row }">{{ row.document_count }} 篇</template>
-        <template #cell-business_scenario="{ row }">{{ row.business_scenario || '未标注' }}</template>
+        <template #cell-business_scenario="{ row }">{{
+          row.business_scenario || '未标注'
+        }}</template>
         <template #cell-trust_level="{ row }">
           {{ row.trust_level === 'high' ? '高' : row.trust_level === 'low' ? '低' : '中' }}
         </template>
@@ -70,7 +88,14 @@ function closeDialog(): void {
         <template #cell-updated="{ row }">{{
           new Date(row.updated_at).toLocaleDateString('zh-CN')
         }}</template>
-        <template #cell-actions="{ row }"><button class="secondary-button" type="button" @click="page.openGovernanceDialog(row)">治理设置</button></template>
+        <template #cell-actions="{ row }"
+          ><div class="flex gap-[6px]">
+            <button class="secondary-button" type="button" @click="openWiki(row)">词条管理</button
+            ><button class="secondary-button" type="button" @click="page.openGovernanceDialog(row)">
+              治理设置
+            </button>
+          </div></template
+        >
       </AppTable>
     </div>
   </section>
@@ -89,7 +114,34 @@ function closeDialog(): void {
       @submit="page.saveKnowledgeBase"
     />
   </AppDialog>
-  <AppDialog :open="editDialogOpen" title="编辑治理元数据" content-class="w-[min(520px,calc(100vw-2rem))]" @close="editDialogOpen = false">
-    <GovernanceDialog v-if="editingRow" :form="editForm" :members="members" :saving="editSaving" :name="editingRow.name" @cancel="editDialogOpen = false" @submit="page.saveGovernance" />
+  <AppDialog
+    :open="editDialogOpen"
+    title="编辑治理元数据"
+    content-class="w-[min(520px,calc(100vw-2rem))]"
+    @close="editDialogOpen = false"
+  >
+    <GovernanceDialog
+      v-if="editingRow"
+      :form="editForm"
+      :members="members"
+      :saving="editSaving"
+      :name="editingRow.name"
+      @cancel="editDialogOpen = false"
+      @submit="page.saveGovernance"
+    />
+  </AppDialog>
+  <AppDialog
+    :open="wikiOpen"
+    title="LLM Wiki 词条"
+    content-class="w-[min(1440px,calc(100vw-2rem))] overflow-y-hidden"
+    @close="wikiOpen = false"
+  >
+    <WikiDialog
+      v-if="wikiRow"
+      :open="wikiOpen"
+      :knowledge-base-id="wikiRow.id"
+      :knowledge-base-name="wikiRow.name"
+      @close="wikiOpen = false"
+    />
   </AppDialog>
 </template>

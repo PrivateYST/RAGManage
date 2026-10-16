@@ -1,0 +1,5 @@
+/* 图谱颜色只表达文档/词条/别名类型；SVG 尺寸与布局由局部 Tailwind 管理。 */
+/* SVG 分组默认只命中实际笔画，包围框命中允许点击节点与文字之间的空白。 */
+.wiki-graph-node {
+  pointer-events: bounding-box;
+}

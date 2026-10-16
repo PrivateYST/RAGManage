@@ -30,6 +30,8 @@ export interface Citation {
   content: string
   source_path: string
   governance?: KnowledgeBaseGovernance
+  /** 当前有效且已审核发布的关联词条；原文仍为唯一回答证据。 */
+  wiki_entries?: Array<{ id: string; term: string; version_no: number }>
 }
 
 /** 引用所属知识库的业务治理摘要，帮助用户判断来源适用范围。 */

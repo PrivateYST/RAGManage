@@ -397,7 +397,18 @@ async def load_run_snapshot(
                    version.version_no, chunk.section_path, chunk.content,
                    chunk.knowledge_base_id::text, kb.name AS knowledge_base_name,
                    kb.business_scenario, kb.target_users, kb.trust_level,
-                   kb.valid_from, kb.valid_until, kb.source_system, kb.business_tags
+                   kb.valid_from, kb.valid_until, kb.source_system, kb.business_tags,
+                   COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                     'id', we.id::text, 'term', we.term, 'version_no', we.version_no,
+                     'status', we.status) ORDER BY we.term)
+                     FROM wiki_entry_sources wes JOIN wiki_entries we ON we.id = wes.entry_id
+                     WHERE wes.chunk_id = chunk.id AND we.status = 'published'
+                       AND we.tenant_id=chunk.tenant_id
+                       AND we.knowledge_base_id=chunk.knowledge_base_id
+                       AND wes.document_version_id=citation.document_version_id
+                       AND (we.valid_from IS NULL OR we.valid_from <= CURRENT_DATE)
+                       AND (we.valid_until IS NULL OR we.valid_until >= CURRENT_DATE)
+                   ), '[]') AS wiki_entries
             FROM message_citations citation
             JOIN chunks chunk ON chunk.id = citation.chunk_id
               AND chunk.tenant_id = citation.tenant_id
@@ -435,6 +446,7 @@ async def load_run_snapshot(
                 "source_system": item.pop("source_system", ""),
                 "business_tags": list(item.pop("business_tags", []) or []),
             }
+            item["wiki_entries"] = _json_value(item.pop("wiki_entries", []), [])
             item["source_path"] = (
                 f"/documents?knowledge_base_id={item['knowledge_base_id']}"
                 f"&document_id={item['document_id']}"
