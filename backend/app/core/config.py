@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     generation_model: str = "qwen3.8:27b"
     # API Key 额度预扣的最大生成预算；真实结算仍以网关 usage 为准。
     generation_max_tokens: int = 1024
+    # 大模型首字和长回答可能超过常规 API 超时；与前端代理保持一致。
+    generation_timeout_seconds: int = 300
     embedding_model: str = "qwen3-embedding:0.6b"
     embedding_dimensions: int = 1024
     bootstrap_admin_login: str = "admin"

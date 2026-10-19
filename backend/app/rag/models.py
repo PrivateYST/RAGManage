@@ -267,7 +267,8 @@ class ModelGatewayClient:
         }
         if max_tokens is not None:
             request_payload["max_tokens"] = max_tokens
-        async with self._client(timeout=180) as client:
+        # RAG 上下文较长时首字可能较慢；使用可配置总超时，避免代理先断开。
+        async with self._client(timeout=self.settings.generation_timeout_seconds) as client:
             async with client.stream(
                 "POST",
                 f"{self.settings.model_gateway_base_url.rstrip('/')}/api/chat/completions",
