@@ -31,7 +31,8 @@ services:
       DATABASE_URL: postgresql://ragmanage:${POSTGRES_PASSWORD}@postgres:5432/ragmanage_dev
       REDIS_URL: redis://redis:6379/0
       STORAGE_ROOT: /data/files
-      MODEL_GATEWAY_BASE_URL: ${MODEL_GATEWAY_BASE_URL:-http://172.2.2.230:8080}
+      # API 与 Worker 共用服务器 B 网关；本地 .env 可覆盖地址。
+      MODEL_GATEWAY_BASE_URL: ${MODEL_GATEWAY_BASE_URL:-http://221.13.18.102:20000}
       API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:?Run infra/scripts/init-env.ps1 first}
       CSRF_SECRET: ${CSRF_SECRET:-}
       MODEL_GATEWAY_ALLOWED_MODELS: ${MODEL_GATEWAY_ALLOWED_MODELS:-qwen3-embedding:0.6b,qwen3.8:27b}

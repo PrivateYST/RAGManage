@@ -36,8 +36,8 @@ services:
       DATABASE_URL: postgresql://ragmanage:${POSTGRES_PASSWORD}@postgres:5432/ragmanage
       REDIS_URL: redis://redis:6379/0
       STORAGE_ROOT: /data/files
-      # The gateway has a stable in-network default; deployments can override it in the server .env.
-      MODEL_GATEWAY_BASE_URL: ${MODEL_GATEWAY_BASE_URL:-http://172.2.2.230:8080}
+      # Default to server B; deployments can override the gateway in the server .env.
+      MODEL_GATEWAY_BASE_URL: ${MODEL_GATEWAY_BASE_URL:-http://221.13.18.102:20000}
       API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:?Set API_KEY_ENCRYPTION_SECRET to a stable random value}
       CSRF_SECRET: ${CSRF_SECRET:?Set CSRF_SECRET to a stable random value}
       MODEL_GATEWAY_ALLOWED_MODELS: ${MODEL_GATEWAY_ALLOWED_MODELS:-qwen3-embedding:0.6b,qwen3.8:27b}

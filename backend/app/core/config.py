@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     database_url: str = ""
     redis_url: str = "redis://127.0.0.1:16379/0"
     storage_root: Path = PROJECT_ROOT / "data/files"
-    # 业务 API 和 Worker 只访问带 API Key 的 Open WebUI 模型网关。
-    model_gateway_base_url: str = "http://172.2.2.230:8080"
+    # 业务 API 和 Worker 默认通过服务器 B 的 Open WebUI 网关访问模型，可由环境覆盖。
+    model_gateway_base_url: str = "http://221.13.18.102:20000"
     model_gateway_api_key: SecretStr = SecretStr("")
     # Open WebUI 管理员凭据仅用于自动创建医院服务账号；不作为医院调用凭据下发。
     open_webui_admin_email: str = ""

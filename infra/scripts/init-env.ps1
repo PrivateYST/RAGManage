@@ -1,3 +1,4 @@
+# 生成本地开发配置和独立随机密钥；模型网关默认连接服务器 B，不覆盖已有 .env。
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $envFile = Join-Path $projectRoot '.env'
@@ -16,7 +17,7 @@ POSTGRES_PASSWORD=$databasePassword
 DATABASE_URL=postgresql://ragmanage:$databasePassword@127.0.0.1:15432/ragmanage_dev
 REDIS_URL=redis://127.0.0.1:16379/0
 STORAGE_ROOT=$($projectRoot.Replace('\', '/'))/data/files
-MODEL_GATEWAY_BASE_URL=http://172.2.2.230:8080
+MODEL_GATEWAY_BASE_URL=http://221.13.18.102:20000
 API_KEY_ENCRYPTION_SECRET=$encryptionSecret
 CSRF_SECRET=$csrfSecret
 MODEL_GATEWAY_ALLOWED_MODELS=qwen3-embedding:0.6b,qwen3.8:27b
