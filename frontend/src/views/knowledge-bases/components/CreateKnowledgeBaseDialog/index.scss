@@ -1,1 +1,44 @@
 /* 创建弹窗使用应用级表单语义样式，本文件作为局部样式隔离入口。 */
+.create-kb-dialog {
+  display: flex;
+  min-height: 0;
+  max-height: min(720px, calc(100vh - 48px));
+  flex-direction: column;
+  padding: 20px;
+}
+
+.create-kb-dialog .dialog-heading {
+  flex: none;
+  margin-bottom: 12px;
+}
+
+.dialog-form-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1px 4px 1px 0;
+  margin-right: -4px;
+}
+
+.dialog-form-body :deep(label) {
+  margin-top: 10px;
+  gap: 5px;
+}
+
+.dialog-form-body :deep(label:first-child) {
+  margin-top: 0;
+}
+
+.dialog-form-body :deep(textarea) {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.dialog-form-body :deep(.grid label) {
+  margin-top: 0;
+}
+
+.create-kb-dialog .dialog-actions {
+  flex: none;
+  margin-top: 12px;
+  padding-top: 12px;
+}

@@ -103,7 +103,7 @@ function closeDialog(): void {
   <AppDialog
     :open="dialogOpen"
     title="创建知识库"
-    content-class="w-[min(440px,calc(100vw-2rem))]"
+    content-class="w-[min(440px,calc(100vw-2rem))] overflow-hidden"
     @close="closeDialog"
   >
     <CreateKnowledgeBaseDialog
