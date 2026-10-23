@@ -54,9 +54,8 @@ for attempt in {1..30}; do
   sleep 2
 done
 if ! docker exec -i --user postgres "$postgres_container" psql -U ragmanage -d ragmanage \
-  --set="ragmanage_password=$POSTGRES_PASSWORD" \
   -v ON_ERROR_STOP=1 \
-  -c "ALTER ROLE ragmanage PASSWORD :'ragmanage_password';" >/dev/null; then
+  -c "ALTER ROLE ragmanage PASSWORD '$POSTGRES_PASSWORD';" >/dev/null; then
   echo "Unable to reconcile the PostgreSQL password on server B." >&2
   exit 1
 fi
