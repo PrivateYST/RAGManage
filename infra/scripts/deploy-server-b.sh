@@ -15,6 +15,13 @@ if [[ ! -f "$env_file" ]]; then
   exit 1
 fi
 
+# Compose 1.x does not support --env-file; export the protected values so both
+# legacy and current Compose releases resolve the same service configuration.
+set -a
+# shellcheck disable=SC1090
+source "$env_file"
+set +a
+
 cd "$project_root"
 export API_IMAGE="$api_image"
 export FRONTEND_IMAGE="$frontend_image"
@@ -23,7 +30,7 @@ export FRONTEND_IMAGE="$frontend_image"
 docker build --tag "$api_image" --file backend/Dockerfile backend
 docker build --tag "$frontend_image" --file frontend/Dockerfile .
 
-compose=(docker-compose --project-name "$project_name" --env-file "$env_file" --file "$compose_file")
+compose=(docker-compose --project-name "$project_name" --file "$compose_file")
 "${compose[@]}" config -q
 "${compose[@]}" run --rm api alembic upgrade head
 "${compose[@]}" up -d --remove-orphans
