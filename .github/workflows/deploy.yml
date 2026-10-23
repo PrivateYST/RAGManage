@@ -54,3 +54,17 @@ jobs:
           docker compose --env-file $serverEnv -f infra\compose\prod.yaml run --rm api alembic upgrade head
           docker compose --env-file $serverEnv -f infra\compose\prod.yaml up -d --remove-orphans
           Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8081/api/v1/health/ready' -TimeoutSec 30 | Out-Null
+
+  deploy-server-b:
+    # B 使用旧版 Linux Docker，因此在 B 自己的 Runner 上构建并部署本地镜像。
+    runs-on: [self-hosted, Linux, server-b]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy on server B
+        shell: bash
+        env:
+          RAGMANAGE_SERVER_B_ENV: /home/opul-242/ragmanage/.env
+          COMPOSE_PROJECT_NAME: ragmanage
+        run: bash infra/scripts/deploy-server-b.sh

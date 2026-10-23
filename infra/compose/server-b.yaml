@@ -1,0 +1,95 @@
+# 服务器 B 的 Docker 18.09 兼容部署定义；模型网关地址由 B 的受保护 .env 提供。
+version: '2.4'
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ragmanage
+      POSTGRES_DB: ragmanage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-vector.sql:/docker-entrypoint-initdb.d/001-vector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ragmanage -d ragmanage"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4.2-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: ${API_IMAGE:?Set API_IMAGE}
+    restart: unless-stopped
+    environment: &app-environment
+      DATABASE_URL: postgresql://ragmanage:${POSTGRES_PASSWORD}@postgres:5432/ragmanage
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_ROOT: /data/files
+      MODEL_GATEWAY_BASE_URL: ${MODEL_GATEWAY_BASE_URL:?Set MODEL_GATEWAY_BASE_URL}
+      MODEL_GATEWAY_API_KEY: ${MODEL_GATEWAY_API_KEY:-}
+      API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:?Set API_KEY_ENCRYPTION_SECRET}
+      CSRF_SECRET: ${CSRF_SECRET:?Set CSRF_SECRET}
+      MODEL_GATEWAY_ALLOWED_MODELS: ${MODEL_GATEWAY_ALLOWED_MODELS:-qwen3-embedding:0.6b,qwen3.8:27b}
+      GENERATION_MODEL: ${GENERATION_MODEL:?Set GENERATION_MODEL}
+      GENERATION_MAX_TOKENS: ${GENERATION_MAX_TOKENS:-1024}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:?Set EMBEDDING_MODEL}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports:
+      - "127.0.0.1:28000:8000"
+    volumes:
+      - files:/data/files
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=8)"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    image: ${API_IMAGE:?Set API_IMAGE}
+    restart: unless-stopped
+    environment: *app-environment
+    command: ["celery", "-A", "app.jobs.worker:celery_app", "worker", "--beat", "--schedule=/tmp/celerybeat-schedule", "--loglevel=INFO", "--concurrency=1"]
+    volumes:
+      - files:/data/files
+    depends_on:
+      - postgres
+      - redis
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  nginx:
+    image: docker.m.daocloud.io/library/nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:20001:80"
+    volumes:
+      - ./gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - api
+
+volumes:
+  postgres-data:
+  redis-data:
+  files:
