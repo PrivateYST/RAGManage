@@ -190,23 +190,28 @@ class ModelGatewayClient:
         *,
         temperature: float = 0,
         max_tokens: int = 128,
+        response_format: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """执行受模型白名单约束的短非流式生成，并返回网关用量或本地估算。"""
+        """执行短非流式生成；可要求网关返回指定结构，并返回用量。"""
         await self._ensure_gateway_key()
         if not messages or any(not item.get("content", "").strip() for item in messages):
             raise ValueError("EMPTY_CHAT_MESSAGES")
         if self.settings.generation_model not in self.settings.allowed_model_names:
             raise ValueError("MODEL_NOT_ALLOWED")
         async with self._client(timeout=60) as client:
+            request_payload: dict[str, Any] = {
+                "model": self.settings.generation_model,
+                "messages": messages,
+                "stream": False,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            if response_format is not None:
+                # 路由分类依赖严格 JSON；兼容网关会把该约束传递给底层模型。
+                request_payload["response_format"] = response_format
             response = await client.post(
                 f"{self.settings.model_gateway_base_url.rstrip('/')}/api/chat/completions",
-                json={
-                    "model": self.settings.generation_model,
-                    "messages": messages,
-                    "stream": False,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                },
+                json=request_payload,
             )
             response.raise_for_status()
         payload = response.json()

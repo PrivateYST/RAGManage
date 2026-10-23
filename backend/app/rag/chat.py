@@ -147,21 +147,46 @@ async def classify_assistant_question(
         },
     ]
     try:
-        result = await client.complete_chat(messages, temperature=0, max_tokens=96)
-    except (httpx.HTTPError, ValueError) as error:
-        # 路由只是检索优化；网关短请求异常时按事实问题保守检索，避免整次问答被误判为生成失败。
-        logger.warning("助手问题路由失败，降级为知识库检索: %s", error)
-        return {
-            "retrieve": True,
-            "query": question.strip()[:4000],
-            "usage": {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0,
-                "usage_source": "unavailable",
-            },
-            "model": client.settings.generation_model,
-        }
+        result = await client.complete_chat(
+            messages,
+            temperature=0,
+            max_tokens=96,
+            response_format={"type": "json_object"},
+        )
+    except (httpx.HTTPError, ValueError, TypeError) as error:
+        # 部分旧版兼容客户端不接受 response_format，先用旧形状重试一次。
+        if isinstance(error, TypeError):
+            try:
+                result = await client.complete_chat(messages, temperature=0, max_tokens=96)
+            except (httpx.HTTPError, ValueError) as retry_error:
+                logger.warning("助手问题路由失败，降级为知识库检索: %s", retry_error)
+                return {
+                    "retrieve": True,
+                    "query": question.strip()[:4000],
+                    "usage": {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                        "usage_source": "unavailable",
+                    },
+                    "model": client.settings.generation_model,
+                }
+        else:
+            try:
+                result = await client.complete_chat(messages, temperature=0, max_tokens=96)
+            except (httpx.HTTPError, ValueError) as retry_error:
+                logger.warning("助手问题路由失败，降级为知识库检索: %s", retry_error)
+                return {
+                    "retrieve": True,
+                    "query": question.strip()[:4000],
+                    "usage": {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                        "usage_source": "unavailable",
+                    },
+                    "model": client.settings.generation_model,
+                }
     raw = str(result["content"])
     match = re.search(r"\{[\s\S]*\}", raw)
     try:
