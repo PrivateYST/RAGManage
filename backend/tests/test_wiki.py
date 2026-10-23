@@ -23,27 +23,29 @@ from app.rag.wiki import (
     "before,after",
     [
         ("draft", "review"),
+        ("draft", "published"),
         ("review", "published"),
         ("review", "draft"),
         ("published", "retired"),
         ("retired", "draft"),
+        ("retired", "published"),
     ],
 )
 def test_allowed_lifecycle(before, after):
-    """每条允许路径都有明确状态，不能绕过审核直接发布。"""
+    """快捷发布和启用仍只能通过明确的生命周期迁移完成。"""
     validate_transition(before, after)
 
 
 @pytest.mark.parametrize(
     "before,after",
     [
-        ("draft", "published"),
         ("published", "published"),
-        ("retired", "published"),
+        ("draft", "retired"),
+        ("retired", "review"),
     ],
 )
 def test_rejects_shortcuts_and_duplicate_publish(before, after):
-    """重复发布和跳过审核返回冲突，让用户刷新状态。"""
+    """重复发布和不支持的状态跳转返回冲突，让用户刷新状态。"""
     with pytest.raises(HTTPException) as error:
         validate_transition(before, after)
     assert error.value.status_code == 409

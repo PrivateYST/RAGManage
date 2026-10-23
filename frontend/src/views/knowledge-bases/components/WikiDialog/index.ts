@@ -45,8 +45,17 @@ export function useWikiDialog(props: WikiDialogProps) {
   const historyTerm = shallowRef('')
   const sourceQuery = shallowRef('')
   const searching = shallowRef(false)
-  const pendingRetire = ref<WikiEntry | null>(null)
   const editing = computed(() => editingEntry.value !== null)
+  const pendingPublicationCount = computed(
+    () =>
+      entries.value.filter((entry) => entry.status === 'draft' || entry.status === 'review').length,
+  )
+  const publishedCount = computed(
+    () => entries.value.filter((entry) => entry.status === 'published').length,
+  )
+  const retiredCount = computed(
+    () => entries.value.filter((entry) => entry.status === 'retired').length,
+  )
   let loadSerial = 0
 
   /** 保存后清空局部编辑状态，取消时也可回到新增。 */
@@ -149,11 +158,64 @@ export function useWikiDialog(props: WikiDialogProps) {
     saving.value = true
     try {
       await transitionWikiEntry(entry, status)
-      pendingRetire.value = null
-      toast.success(status === 'published' ? '词条已发布并参与检索' : '词条状态已更新')
+      if (entry.status === 'retired' && status === 'published') {
+        toast.success('词条已启用并参与检索')
+      } else if (status === 'published') {
+        toast.success('词条已审核发布并参与检索')
+      } else if (status === 'retired') {
+        toast.success('词条已停用并退出检索')
+      } else {
+        toast.success('词条状态已更新')
+      }
       await load()
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : '状态更新失败')
+    } finally {
+      saving.value = false
+    }
+  }
+
+  /** 按词条状态批量迁移当前知识库全部匹配项，并汇报部分成功以便重试失败项。 */
+  async function bulkTransition(action: 'publish' | 'retire' | 'enable'): Promise<void> {
+    if (saving.value) return
+    const eligible = entries.value.filter((entry) => {
+      if (action === 'publish') return entry.status === 'draft' || entry.status === 'review'
+      if (action === 'retire') return entry.status === 'published'
+      return entry.status === 'retired'
+    })
+    if (!eligible.length) return
+
+    const target: WikiStatus = action === 'retire' ? 'retired' : 'published'
+    saving.value = true
+    try {
+      const results = await Promise.allSettled(
+        eligible.map((entry) => transitionWikiEntry(entry, target)),
+      )
+      const failed = results.flatMap((result, index) =>
+        result.status === 'rejected' ? [eligible[index]] : [],
+      )
+      const succeeded = eligible.length - failed.length
+
+      if (failed.length) {
+        const failedNames = failed
+          .slice(0, 3)
+          .map((entry) => entry.term)
+          .join('、')
+        const more = failed.length > 3 ? `等 ${failed.length} 条` : failedNames
+        const reason = results.find((result) => result.status === 'rejected')
+        const detail =
+          reason?.status === 'rejected' && reason.reason instanceof Error
+            ? reason.reason.message
+            : '请刷新后重试'
+        toast.error(`${succeeded} 条成功，${failed.length} 条失败（${more}）：${detail}`)
+      } else if (action === 'publish') {
+        toast.success(`已审核发布 ${succeeded} 条词条并参与检索`)
+      } else if (action === 'retire') {
+        toast.success(`已停用 ${succeeded} 条词条并退出检索`)
+      } else {
+        toast.success(`已启用 ${succeeded} 条词条并参与检索`)
+      }
+      await load()
     } finally {
       saving.value = false
     }
@@ -198,8 +260,10 @@ export function useWikiDialog(props: WikiDialogProps) {
     historyTerm,
     sourceQuery,
     searching,
-    pendingRetire,
     editing,
+    pendingPublicationCount,
+    publishedCount,
+    retiredCount,
     formOpen,
     startCreate,
     view,
@@ -210,6 +274,7 @@ export function useWikiDialog(props: WikiDialogProps) {
     searchSources,
     save,
     transition,
+    bulkTransition,
     showHistory,
   }
 }

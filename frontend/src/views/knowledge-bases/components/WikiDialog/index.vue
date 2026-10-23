@@ -1,7 +1,6 @@
-<!-- Wiki 容器仅协调词条列表、编辑表单和历史；复用已有 AppDialog/AlertDialog。 -->
+<!-- Wiki 容器协调词条列表、批量状态操作、编辑表单和历史视图。 -->
 <script setup lang="ts">
 import type { WikiDialogProps } from './type'
-import { AppConfirmDialog } from '@/components'
 import WikiEntryForm from '../WikiEntryForm/index.vue'
 import WikiEntryList from '../WikiEntryList/index.vue'
 import WikiExtraction from '../WikiExtraction/index.vue'
@@ -23,8 +22,10 @@ const {
   historyTerm,
   sourceQuery,
   searching,
-  pendingRetire,
   editing,
+  pendingPublicationCount,
+  publishedCount,
+  retiredCount,
   formOpen,
   startCreate,
   view,
@@ -35,6 +36,7 @@ const {
   searchSources,
   save,
   transition,
+  bulkTransition,
   showHistory,
 } = useWikiDialog(props)
 </script>
@@ -108,16 +110,48 @@ const {
         @busy="extractionBusy = $event"
       />
       <template v-if="view === 'list' || formOpen">
-        <div class="flex shrink-0 items-center justify-between border-t border-border pt-[16px]">
+        <div
+          class="flex shrink-0 flex-wrap items-center justify-between gap-[12px] border-t border-border pt-[16px]"
+        >
           <div>
             <h3 class="m-0 text-sm font-semibold">{{ formOpen ? '维护词条' : '知识词条' }}</h3>
             <p class="mt-[6px] text-xs text-muted-foreground">
               共 {{ entries.length }} 条 · 仅已发布且有效的词条参与检索
             </p>
           </div>
-          <button v-if="canManage && !formOpen" class="primary-button" @click="startCreate">
-            新建词条
-          </button>
+          <div
+            v-if="canManage && !formOpen"
+            class="flex flex-wrap items-center justify-end gap-[8px]"
+          >
+            <button
+              class="secondary-button"
+              :disabled="saving || !pendingPublicationCount"
+              :aria-label="`一键审核发布全部待处理词条，共 ${pendingPublicationCount} 条`"
+              :title="`将当前知识库的 ${pendingPublicationCount} 条草稿和待审核词条全部发布`"
+              @click="bulkTransition('publish')"
+            >
+              一键审核发布全部待处理（{{ pendingPublicationCount }}）
+            </button>
+            <button
+              class="secondary-button"
+              :disabled="saving || !publishedCount"
+              :aria-label="`一键停用全部已发布词条，共 ${publishedCount} 条`"
+              :title="`停用当前知识库全部 ${publishedCount} 条已发布词条`"
+              @click="bulkTransition('retire')"
+            >
+              一键停用全部已发布（{{ publishedCount }}）
+            </button>
+            <button
+              class="secondary-button"
+              :disabled="saving || !retiredCount"
+              :aria-label="`一键启用全部已停用词条，共 ${retiredCount} 条`"
+              :title="`启用当前知识库全部 ${retiredCount} 条已停用词条`"
+              @click="bulkTransition('enable')"
+            >
+              一键启用全部已停用（{{ retiredCount }}）
+            </button>
+            <button class="primary-button" @click="startCreate">新建词条</button>
+          </div>
           <button v-if="formOpen" class="secondary-button" :disabled="saving" @click="reset">
             返回列表
           </button>
@@ -130,7 +164,6 @@ const {
             :busy="saving"
             @edit="edit"
             @transition="transition"
-            @retire="pendingRetire = $event"
             @history="showHistory"
           />
           <section
@@ -177,13 +210,5 @@ const {
         </p>
       </template>
     </template>
-    <AppConfirmDialog
-      :open="Boolean(pendingRetire)"
-      title="停用词条？"
-      description="停用后，此词条立即退出检索扩展。历史内容和版本记录会保留。"
-      :busy="saving"
-      @cancel="pendingRetire = null"
-      @confirm="pendingRetire && transition(pendingRetire, 'retired')"
-    />
   </div>
 </template>

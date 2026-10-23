@@ -69,12 +69,12 @@ class WikiTransition(BaseModel):
 
 
 def validate_transition(current: str, target: str) -> None:
-    """只允许草稿送审、审核发布/退回、发布停用和停用后重开草稿。"""
+    """允许草稿直发、审核发布/退回、发布停用和停用后重新启用。"""
     allowed = {
-        "draft": {"review"},
+        "draft": {"review", "published"},
         "review": {"published", "draft"},
         "published": {"retired"},
-        "retired": {"draft"},
+        "retired": {"draft", "published"},
     }
     if target not in allowed.get(current, set()):
         raise HTTPException(409, "当前词条状态不支持该操作，请刷新后重试")

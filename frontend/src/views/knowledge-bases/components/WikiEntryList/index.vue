@@ -1,4 +1,4 @@
-<!-- 词条列表：可见的来源、负责人、版本与受控状态操作。 -->
+<!-- 词条列表：可见的来源、负责人、版本与单条快捷状态操作。 -->
 <script setup lang="ts">
 import type { WikiEntryListProps } from './type'
 import type { WikiEntry, WikiStatus } from '@/api/wiki'
@@ -8,7 +8,6 @@ defineProps<WikiEntryListProps>()
 const emit = defineEmits<{
   edit: [entry: WikiEntry]
   transition: [entry: WikiEntry, status: WikiStatus]
-  retire: [entry: WikiEntry]
   history: [entry: WikiEntry]
 }>()
 </script>
@@ -19,12 +18,48 @@ const emit = defineEmits<{
       :key="entry.id"
       class="rounded-lg border border-border bg-card p-[20px]"
     >
-      <div class="flex flex-wrap items-center gap-[8px]">
-        <strong>{{ entry.term }}</strong
-        ><span class="status-pill" :class="entry.status === 'published' ? 'ready' : ''">{{
-          statusLabels[entry.status]
-        }}</span
-        ><span class="text-xs text-muted-foreground">v{{ entry.version_no }}</span>
+      <div class="flex flex-wrap items-start justify-between gap-[12px]">
+        <div class="flex min-w-0 flex-wrap items-center gap-[8px]">
+          <strong>{{ entry.term }}</strong>
+          <span class="status-pill" :class="entry.status === 'published' ? 'ready' : ''">
+            {{ statusLabels[entry.status] }}
+          </span>
+          <span class="text-xs text-muted-foreground">v{{ entry.version_no }}</span>
+        </div>
+        <div v-if="canManage" class="flex shrink-0 flex-wrap gap-[8px]">
+          <button
+            v-if="entry.status === 'draft' || entry.status === 'review'"
+            class="primary-button"
+            :disabled="busy"
+            @click="emit('transition', entry, 'published')"
+          >
+            审核并发布
+          </button>
+          <button
+            v-if="entry.status === 'review'"
+            class="secondary-button"
+            :disabled="busy"
+            @click="emit('transition', entry, 'draft')"
+          >
+            退回草稿
+          </button>
+          <button
+            v-if="entry.status === 'published'"
+            class="secondary-button"
+            :disabled="busy"
+            @click="emit('transition', entry, 'retired')"
+          >
+            停用
+          </button>
+          <button
+            v-if="entry.status === 'retired'"
+            class="secondary-button"
+            :disabled="busy"
+            @click="emit('transition', entry, 'published')"
+          >
+            启用
+          </button>
+        </div>
       </div>
       <p class="my-[12px] whitespace-pre-wrap text-sm leading-relaxed">{{ entry.definition }}</p>
       <p class="text-xs text-muted-foreground">
@@ -58,45 +93,6 @@ const emit = defineEmits<{
         <button class="secondary-button" :disabled="busy" @click="emit('edit', entry)">编辑</button>
         <button class="secondary-button" :disabled="busy" @click="emit('history', entry)">
           版本历史
-        </button>
-        <button
-          v-if="entry.status === 'draft'"
-          class="primary-button"
-          :disabled="busy"
-          @click="emit('transition', entry, 'review')"
-        >
-          提交审核
-        </button>
-        <template v-if="entry.status === 'review'"
-          ><button
-            class="primary-button"
-            :disabled="busy"
-            @click="emit('transition', entry, 'published')"
-          >
-            审核并发布</button
-          ><button
-            class="secondary-button"
-            :disabled="busy"
-            @click="emit('transition', entry, 'draft')"
-          >
-            退回草稿
-          </button></template
-        >
-        <button
-          v-if="entry.status === 'published'"
-          class="secondary-button"
-          :disabled="busy"
-          @click="emit('retire', entry)"
-        >
-          停用
-        </button>
-        <button
-          v-if="entry.status === 'retired'"
-          class="secondary-button"
-          :disabled="busy"
-          @click="emit('transition', entry, 'draft')"
-        >
-          重新编辑
         </button>
       </div>
     </article>

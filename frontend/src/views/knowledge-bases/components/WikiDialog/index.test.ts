@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /** Wiki 管理回归：打开即加载、持久化完整来源、版本冲突重试和只读权限。 */
-import type { WikiEntry } from '@/api/wiki'
+import type { WikiEntry, WikiStatus } from '@/api/wiki'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, reactive } from 'vue'
 import { useWikiDialog } from './index'
@@ -21,14 +21,14 @@ vi.mock('@/composables/useToast', () => ({
 }))
 
 /** 使用与实际 API 相同的词条结构，版本递增由服务端负责。 */
-function entry(): WikiEntry {
+function entry(status: WikiStatus = 'draft', id = '1'): WikiEntry {
   return {
-    id: '1',
+    id,
     knowledge_base_id: '9',
     term: '儿童健康',
     definition: '规范定义',
     aliases: ['儿保'],
-    status: 'draft',
+    status,
     version_no: 2,
     owner_user_id: '7',
     valid_from: null,
@@ -113,6 +113,50 @@ describe('lLM Wiki lifecycle', () => {
     await vi.waitFor(() => expect(page.entries.value).toHaveLength(1))
     await page.transition(entry(), 'review')
     expect(api.transitionWikiEntry).toHaveBeenCalledWith(entry(), 'review')
+    expect(api.fetchWikiEntries).toHaveBeenCalledTimes(2)
+    scope.stop()
+  })
+
+  it.each([
+    { action: 'publish', statuses: ['draft', 'review'] as WikiStatus[], target: 'published' },
+    { action: 'retire', statuses: ['published'] as WikiStatus[], target: 'retired' },
+    { action: 'enable', statuses: ['retired'] as WikiStatus[], target: 'published' },
+  ] as const)(
+    'bulk $action processes all matching entries once',
+    async ({ action, statuses, target }) => {
+      const items = [
+        entry('draft', '1'),
+        entry('review', '2'),
+        entry('published', '3'),
+        entry('retired', '4'),
+      ]
+      api.fetchWikiEntries.mockResolvedValue({ items, can_manage: true })
+      const { page, scope } = setup()
+      await vi.waitFor(() => expect(page.entries.value).toHaveLength(4))
+
+      await page.bulkTransition(action)
+
+      const expected = items.filter((item) => statuses.includes(item.status))
+      expect(api.transitionWikiEntry).toHaveBeenCalledTimes(expected.length)
+      for (const item of expected)
+        expect(api.transitionWikiEntry).toHaveBeenCalledWith(item, target)
+      expect(api.fetchWikiEntries).toHaveBeenCalledTimes(2)
+      scope.stop()
+    },
+  )
+
+  it('reports partial bulk failures and refreshes successful changes', async () => {
+    const items = [entry('draft', '1'), entry('review', '2')]
+    api.fetchWikiEntries.mockResolvedValue({ items, can_manage: true })
+    api.transitionWikiEntry.mockImplementation((item: WikiEntry) =>
+      item.id === '2' ? Promise.reject(new Error('来源已失效')) : Promise.resolve(item),
+    )
+    const { page, scope } = setup()
+    await vi.waitFor(() => expect(page.entries.value).toHaveLength(2))
+
+    await page.bulkTransition('publish')
+
+    expect(api.error).toHaveBeenCalledWith('1 条成功，1 条失败（儿童健康）：来源已失效')
     expect(api.fetchWikiEntries).toHaveBeenCalledTimes(2)
     scope.stop()
   })
