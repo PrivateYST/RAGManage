@@ -67,4 +67,5 @@ jobs:
         env:
           RAGMANAGE_SERVER_B_ENV: /home/opul-242/ragmanage/.env
           COMPOSE_PROJECT_NAME: ragmanage
+          DOCKER_MIRROR_PREFIX: docker.m.daocloud.io
         run: bash infra/scripts/deploy-server-b.sh

@@ -9,6 +9,16 @@ project_name="${COMPOSE_PROJECT_NAME:-ragmanage}"
 image_tag="${GITHUB_SHA:?GITHUB_SHA is required}"
 api_image="ragmanage-b-api:${image_tag}"
 frontend_image="ragmanage-b-frontend:${image_tag}"
+mirror_prefix="${DOCKER_MIRROR_PREFIX:-}"
+python_base_image="python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea"
+node_base_image="node:24-alpine"
+nginx_base_image="nginx:1.27-alpine"
+
+if [[ -n "$mirror_prefix" ]]; then
+  python_base_image="$mirror_prefix/library/python:3.12-slim"
+  node_base_image="$mirror_prefix/library/node:24-alpine"
+  nginx_base_image="$mirror_prefix/library/nginx:1.27-alpine"
+fi
 
 if [[ ! -f "$env_file" ]]; then
   echo "Missing protected server B environment: $env_file" >&2
@@ -27,8 +37,8 @@ export API_IMAGE="$api_image"
 export FRONTEND_IMAGE="$frontend_image"
 
 # 旧 Docker Engine 使用传统构建器；镜像保留在 B 本机，不依赖外部 Registry。
-docker build --tag "$api_image" --file backend/Dockerfile backend
-docker build --tag "$frontend_image" --file frontend/Dockerfile .
+docker build --build-arg "PYTHON_BASE_IMAGE=$python_base_image" --tag "$api_image" --file backend/Dockerfile backend
+docker build --build-arg "NODE_BASE_IMAGE=$node_base_image" --build-arg "NGINX_BASE_IMAGE=$nginx_base_image" --tag "$frontend_image" --file frontend/Dockerfile .
 
 compose=(docker-compose --project-name "$project_name" --file "$compose_file")
 "${compose[@]}" config -q
