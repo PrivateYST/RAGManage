@@ -42,6 +42,25 @@ docker build --build-arg "NODE_BASE_IMAGE=$node_base_image" --build-arg "NGINX_B
 
 compose=(docker-compose --project-name "$project_name" --file "$compose_file")
 "${compose[@]}" config -q
+
+# Existing B installations may have initialized the PostgreSQL volume with a
+# different password. Reconcile the role before Alembic opens a new connection.
+"${compose[@]}" up -d postgres redis
+postgres_container="$("${compose[@]}" ps -q postgres)"
+for attempt in {1..30}; do
+  if docker exec --user postgres "$postgres_container" pg_isready -U ragmanage -d ragmanage >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+if ! docker exec -i --user postgres "$postgres_container" psql -U ragmanage -d ragmanage \
+  --set="ragmanage_password=$POSTGRES_PASSWORD" \
+  -v ON_ERROR_STOP=1 \
+  -c "ALTER ROLE ragmanage PASSWORD :'ragmanage_password';" >/dev/null; then
+  echo "Unable to reconcile the PostgreSQL password on server B." >&2
+  exit 1
+fi
+
 "${compose[@]}" run --rm api alembic upgrade head
 "${compose[@]}" up -d --remove-orphans
 
