@@ -146,7 +146,22 @@ async def classify_assistant_question(
             ),
         },
     ]
-    result = await client.complete_chat(messages, temperature=0, max_tokens=96)
+    try:
+        result = await client.complete_chat(messages, temperature=0, max_tokens=96)
+    except (httpx.HTTPError, ValueError) as error:
+        # 路由只是检索优化；网关短请求异常时按事实问题保守检索，避免整次问答被误判为生成失败。
+        logger.warning("助手问题路由失败，降级为知识库检索: %s", error)
+        return {
+            "retrieve": True,
+            "query": question.strip()[:4000],
+            "usage": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "usage_source": "unavailable",
+            },
+            "model": client.settings.generation_model,
+        }
     raw = str(result["content"])
     match = re.search(r"\{[\s\S]*\}", raw)
     try:

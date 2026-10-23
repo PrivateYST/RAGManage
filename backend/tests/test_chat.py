@@ -614,6 +614,40 @@ def test_assistant_question_classifier_falls_back_to_search_on_invalid_json() ->
     assert result["query"] == "我们的年假规定是什么？"
 
 
+def test_assistant_question_classifier_falls_back_to_search_on_gateway_value_error() -> None:
+    """路由网关请求异常时仍检索知识库，防止文档问题直接显示生成失败。"""
+
+    class FailingRouterClient:
+        """模拟模型网关返回无法解析的响应。"""
+
+        class SettingsValue:
+            generation_model = "router-model"
+
+        settings = SettingsValue()
+
+        async def complete_chat(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            temperature: float,
+            max_tokens: int,
+        ) -> dict[str, Any]:
+            """抛出与真实响应校验一致的 ValueError。"""
+            raise ValueError("INVALID_CHAT_RESPONSE")
+
+    result = asyncio.run(
+        classify_assistant_question(
+            FailingRouterClient(),  # type: ignore[arg-type]
+            question="居民健康档案包含哪些内容？",
+            history=[],
+        )
+    )
+
+    assert result["retrieve"] is True
+    assert result["query"] == "居民健康档案包含哪些内容？"
+    assert result["usage"]["usage_source"] == "unavailable"
+
+
 def test_assistant_general_question_skips_knowledge_base_retrieval(monkeypatch: Any) -> None:
     """路由判定为一般交流时直接回答，并且不触发单库或跨库检索。"""
     connection = FakeAssistantStreamConnection()
