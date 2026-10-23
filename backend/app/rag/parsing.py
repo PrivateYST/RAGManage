@@ -48,10 +48,18 @@ class ParsedDocument:
 
 
 def parse_document(path: Path) -> ParsedDocument:
+    suffix = path.suffix.lower()
+    if not path.exists():
+        return ParsedDocument(
+            path.name,
+            "",
+            f"{suffix}:v1",
+            status="failed",
+            warnings=["STORAGE_OBJECT_MISSING"],
+        )
     if path.stat().st_size > MAX_DOCUMENT_SIZE:
         raise ValueError("FILE_TOO_LARGE")
     raw = path.read_bytes()
-    suffix = path.suffix.lower()
     result = ParsedDocument(path.name, hashlib.sha256(raw).hexdigest(), f"{suffix}:v1")
     try:
         if suffix in {".md", ".txt"}:
@@ -81,10 +89,14 @@ def parse_document(path: Path) -> ParsedDocument:
         PdfminerException,
         XMLSyntaxError,
         KeyError,
+        FileNotFoundError,
     ):
         result.status = "failed"
         result.blocks.clear()
-        result.warnings.append("INVALID_OR_DAMAGED_DOCUMENT")
+        # 文件对象可能在任务排队期间被清理；保留明确原因，避免前端只显示笼统的解析失败。
+        result.warnings.append(
+            "STORAGE_OBJECT_MISSING" if not path.exists() else "INVALID_OR_DAMAGED_DOCUMENT"
+        )
     if not result.blocks and result.status == "complete":
         result.status = "unsupported"
         result.warnings.append("EMPTY_TEXT")
@@ -130,6 +142,16 @@ def _docx(raw: bytes, result: ParsedDocument) -> None:
         if paragraph.style and paragraph.style.name.startswith("Heading"):
             heading = (paragraph.text,)
         result.blocks.append(Block(paragraph.text, heading, {"paragraph": i}))
+    # 仅含表格的 DOCX 没有段落文本，必须把单元格展平为带行列定位的文本块，
+    # 否则会被误判为 EMPTY_TEXT/unsupported，导致可检索内容直接丢失。
+    for table_index, table in enumerate(document.tables, 1):
+        for row_index, row in enumerate(table.rows, 1):
+            cells = [cell.text.strip() for cell in row.cells]
+            text = " | ".join(value for value in cells if value)
+            if text:
+                result.blocks.append(
+                    Block(text, heading, {"table": table_index, "row": row_index})
+                )
 
 
 def _pdf(raw: bytes, result: ParsedDocument) -> None:

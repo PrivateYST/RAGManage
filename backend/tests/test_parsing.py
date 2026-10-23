@@ -42,6 +42,13 @@ def test_invalid_and_empty_text_are_not_complete(tmp_path: Path) -> None:
     assert parse_document(path).status == "unsupported"
 
 
+def test_missing_storage_object_has_actionable_warning(tmp_path: Path) -> None:
+    """回归：存储对象丢失时返回明确告警，便于任务中心定位而非只显示通用失败。"""
+    parsed = parse_document(tmp_path / "missing.pdf")
+    assert parsed.status == "failed"
+    assert parsed.warnings == ["STORAGE_OBJECT_MISSING"]
+
+
 def test_raw_html_is_flagged_not_silently_dropped(tmp_path: Path) -> None:
     path = tmp_path / "input.md"
     path.write_text("<script>alert(1)</script>\n", encoding="utf-8")
@@ -119,8 +126,25 @@ def test_docx_tables_require_review(tmp_path: Path) -> None:
     document.save(str(path))
     parsed = parse_document(path)
     assert parsed.status == "partial"
-    assert parsed.blocks[-1].locator == {"paragraph": 2}
-    assert parsed.blocks[-1].section_path == ("Rules",)
+    assert parsed.blocks[-1].locator == {"table": 1, "row": 1}
+
+
+def test_docx_table_only_document_is_searchable(tmp_path: Path) -> None:
+    """回归：只有表格的 DOCX 也应生成带行定位的文本块，而不是 unsupported。"""
+    document = Document()
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "项目"
+    table.cell(0, 1).text = "值"
+    table.cell(1, 0).text = "年龄"
+    table.cell(1, 1).text = "18"
+    path = tmp_path / "table-only.docx"
+    document.save(path)
+
+    parsed = parse_document(path)
+
+    assert parsed.status == "partial"
+    assert any("年龄" in block.text for block in parsed.blocks)
+    assert any(block.locator == {"table": 1, "row": 2} for block in parsed.blocks)
 
 
 def test_pdf_table_detection_does_not_mark_successful_tables_partial(
